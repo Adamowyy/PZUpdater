@@ -1,0 +1,9 @@
+# Środowisko buildu (Python 3.11 + zależności)
+.buildenv/
+
+# Artefakty PyInstaller
+build/
+dist/
+__pycache__/
+*.pyc
+*.spec
