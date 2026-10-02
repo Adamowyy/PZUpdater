@@ -854,10 +854,9 @@ class PZUpdaterApp:
             self.steam_info = result
             self.refresh_statuses()
             self._reveal()
-            if not silent:
-                new = [m["name"] for m in UPDATABLE_MODS if self._updatable_status(m)[1] == "new"]
-                new += [m["name"] for m in self.manual_mods if self._manual_status(m)[1] == "new"]
-                self.set_status("Nowa aktualizacja: " + ", ".join(new) if new else "Wszystko aktualne.")
+            new = [m["name"] for m in UPDATABLE_MODS if self._updatable_status(m)[1] == "new"]
+            new += [m["name"] for m in self.manual_mods if self._manual_status(m)[1] == "new"]
+            self.set_status("Nowa aktualizacja: " + ", ".join(new) if new else "Wszystko aktualne.")
 
         self._run_async(work, on_done)
 
