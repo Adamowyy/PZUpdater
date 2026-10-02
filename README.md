@@ -8,7 +8,26 @@ game folder by hand.
 
 <sub>Better Car Physics is subscribed but its files are not in the game folder yet — that card is greyed out and has its own **Install** button, while the main **Update** button stays off the table.</sub>
 
-Windows · Python 3.8+ · [latest release](https://github.com/Adamowyy/PZUpdater/releases/latest)
+## Install
+
+**Download [PZUpdater.exe](https://github.com/Adamowyy/PZUpdater/releases/latest) and run it.**
+That is the whole installation: one file, no setup, nothing to configure.
+
+1. Open the [latest release](https://github.com/Adamowyy/PZUpdater/releases/latest)
+   and download `PZUpdater.exe` from the assets.
+2. Run it. Windows may show SmartScreen ("unknown publisher") because the exe is
+   not code-signed — *More info* → *Run anyway*.
+3. Press **Check for updates**. Steam, the game folder and the workshop are found
+   on their own, also when the game sits on another drive.
+
+Requirements: Windows, Steam and Project Zomboid (build 42) installed.
+
+There is no installer, so there is nothing to uninstall either — delete the exe.
+The app keeps its state (applied mod timestamps, watched mods, language) in
+`%APPDATA%\PZUpdater\state.json`; delete that file too if you want a clean slate.
+
+The app only writes the mod paths listed below. No backups, no deletions, and it
+touches nothing else in the game folder.
 
 ## Mod requests
 
@@ -26,9 +45,6 @@ add the ones that can be automated safely.
 - Checks whether the mod files are actually in the game folder, not just
   subscribed.
 - Copies what needs copying — per mod, or all of it at once.
-
-Nothing else is touched: no backups are made, nothing is deleted. The app only
-writes the paths listed for a mod in [the registry](#adding-a-mod).
 
 ## Supported mods
 
@@ -65,51 +81,11 @@ Mods that are not installed yet are greyed out, and installing one is always a
 separate click. The main **Update** button only touches mods that are already in
 the game folder, so it never pulls something into the game you did not ask for.
 
-## Getting started
-
-Grab `PZUpdater.exe` from the [latest release](https://github.com/Adamowyy/PZUpdater/releases/latest)
-and run it. Steam and Project Zomboid have to be installed; there is nothing to
-configure.
-
-Running from source:
-
-```bash
-pip install customtkinter
-python pzupdater.py
-```
-
-## Building the exe
-
-```bash
-uv venv --python 3.11 .buildenv
-uv pip install --python .buildenv/Scripts/python.exe pyinstaller customtkinter
-.buildenv/Scripts/python.exe -m PyInstaller --noconfirm PZUpdater.spec
-```
-
-The result is `dist/PZUpdater.exe` — a single file with no console window.
-
-## Tests
-
-```bash
-.buildenv/Scripts/python.exe -m unittest discover -s tests -v
-```
-
-The tests cover file comparison, the mod registry and the translations. They do
-not need Steam or the game to be installed.
-
-## Adding a mod
-
-Only mods that need manual file work belong on the list. The format is described
-in [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-mod) — most entries are a handful
-of lines, because the app finds the version folders and the jar paths itself.
-
 ## Languages
 
 The interface ships in English and Polish. Switch with the flags in the top-right
 corner; the choice is stored in `state.json`. A new language is one table in
 `i18n.py` — see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-language).
-
-![PZ Updater in Polish](docs/screenshot_pl.png)
 
 ## Requests, bugs, feedback
 
@@ -120,6 +96,41 @@ When something goes wrong, the app's log window (click the status line at the
 bottom, or the error toast) lists the paths it detected — that usually answers
 the first few questions.
 
+## Development
+
+Nothing in this section is needed to use the app.
+
+Running from source:
+
+```bash
+pip install customtkinter
+python pzupdater.py
+```
+
+Building the exe:
+
+```bash
+uv venv --python 3.11 .buildenv
+uv pip install --python .buildenv/Scripts/python.exe pyinstaller customtkinter
+.buildenv/Scripts/python.exe -m PyInstaller --noconfirm PZUpdater.spec
+```
+
+The result is `dist/PZUpdater.exe` — a single file with no console window.
+
+Tests:
+
+```bash
+.buildenv/Scripts/python.exe -m unittest discover -s tests -v
+```
+
+They cover file comparison, the mod registry and the translations, and need
+neither Steam nor the game.
+
+Adding a mod: only mods that need manual file work belong on the list. The format
+is described in [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-mod) — most entries are
+a handful of lines, because the app finds the version folders and the jar paths
+itself.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
@@ -129,10 +140,17 @@ respective owners.
 
 ## Polski
 
-Aktualizator modów Project Zomboid, które wymagają ręcznej instalacji — tych,
-gdzie subskrypcja w Warsztacie nie wystarcza i pliki trzeba skopiować do folderu
-gry. Interfejs ma przełącznik języka (flagi w prawym górnym rogu), a stan
-program trzyma w `%APPDATA%\PZUpdater\state.json`.
+**Pobierz [PZUpdater.exe](https://github.com/Adamowyy/PZUpdater/releases/latest)
+i uruchom go** — to cała instalacja: jeden plik, bez instalatora, bez
+konfiguracji. Potrzebne są tylko Windows, Steam i Project Zomboid (build 42).
+Windows może pokazać SmartScreen („nieznany wydawca", bo exe nie jest podpisany):
+*Więcej informacji* → *Uruchom mimo to*.
+
+Program sam znajduje Steama, grę i Warsztat, sprawdza datę publikacji każdego
+moda i kopiuje pliki, które trzeba skopiować ręcznie. Interfejs ma przełącznik
+języka (flagi w prawym górnym rogu), a stan trzyma w
+`%APPDATA%\PZUpdater\state.json`. Zmienia wyłącznie pliki modów z listy — bez
+backupów i bez kasowania czegokolwiek.
 
 **Chcesz, żeby program obsługiwał Twojego moda?** Napisz na Discordzie:
 **xadamowy** — podeślij link do Warsztatu, a jeśli wiesz, które pliki gdzie
