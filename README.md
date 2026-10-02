@@ -4,7 +4,9 @@ Updater for Project Zomboid mods that need a manual install — the ones where
 subscribing on Steam is not enough and files still have to be copied into the
 game folder by hand.
 
-![PZ Updater](docs/screenshot_en.png)
+![PZ Updater](docs/screenshot.jpg)
+
+<sub>Better Car Physics is subscribed but its files are not in the game folder yet — that card is greyed out and has its own **Install** button, while the main **Update** button stays off the table.</sub>
 
 Windows · Python 3.8+ · [latest release](https://github.com/Adamowyy/PZUpdater/releases/latest)
 
@@ -106,6 +108,8 @@ of lines, because the app finds the version folders and the jar paths itself.
 The interface ships in English and Polish. Switch with the flags in the top-right
 corner; the choice is stored in `state.json`. A new language is one table in
 `i18n.py` — see [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-language).
+
+![PZ Updater in Polish](docs/screenshot_pl.png)
 
 ## Requests, bugs, feedback
 
