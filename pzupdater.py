@@ -811,8 +811,10 @@ class PZUpdaterApp:
                                    wraplength=1040)
         self.status.pack(fill="x", padx=20, pady=(10, 14))
 
-        # overlay: created as the last child so it can cover the whole window
-        self.overlay = ctk.CTkFrame(self.root, fg_color=OVERLAY_BG, corner_radius=0)
+        # overlay: covers the mod lists only. It is a child of the content frame on
+        # purpose - a curtain over the whole window would swallow clicks on the
+        # language flags in the header while a check is running.
+        self.overlay = ctk.CTkFrame(main, fg_color=OVERLAY_BG, corner_radius=0)
         inner = ctk.CTkFrame(self.overlay, fg_color="transparent")
         inner.place(relx=0.5, rely=0.5, anchor="center")
         self.overlay_bar = ctk.CTkProgressBar(inner, width=280, height=6, corner_radius=3,
