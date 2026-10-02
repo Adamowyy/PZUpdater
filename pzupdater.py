@@ -563,6 +563,9 @@ class PZUpdaterApp:
         self.t.set_language(language)
         self.state["language"] = language
         save_state(self.state)
+        # A click that does not reach the window (focus, covered window) leaves no
+        # trace here, which makes the log useful when a switch "does nothing".
+        self._log("INFO", f"language: {language}")
         self._rebuild_ui()
 
     def _flag_image(self, language):
@@ -578,6 +581,26 @@ class PZUpdaterApp:
                                 size=(image.width, image.height))
         except Exception:      # a missing flag must not stop the app
             return None
+
+    def _bind_flag_click(self, button, code):
+        """Switch the language on a real click, regardless of customtkinter state."""
+        state = {"pressed": False}
+
+        def on_press(_event):
+            state["pressed"] = True
+
+        def on_release(event):
+            was_pressed, state["pressed"] = state["pressed"], False
+            if not was_pressed:
+                return
+            # released outside the button means the click was cancelled
+            inside = (0 <= event.x_root - button.winfo_rootx() < button.winfo_width()
+                      and 0 <= event.y_root - button.winfo_rooty() < button.winfo_height())
+            if inside:
+                self.set_language(code)
+
+        button.bind("<Button-1>", on_press, add=True)
+        button.bind("<ButtonRelease-1>", on_release, add=True)
 
     def _rebuild_ui(self):
         """Recreate the widgets after a language change (texts live in widgets)."""
@@ -643,6 +666,7 @@ class PZUpdaterApp:
                 text_color=TEXT if active else MUTED, font=self.f_muted,
                 command=lambda c=code: self.set_language(c))
             btn.pack(side="left", padx=(4, 0))
+            self._bind_flag_click(btn, code)
             self._lang_buttons[code] = btn
 
         sig = ctk.CTkLabel(top, text=self.t("app.signature"), font=self.f_muted,
