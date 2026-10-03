@@ -367,6 +367,42 @@ INSTALL_MISSING = "missing"  # none of the mod files are in the game folder
 INSTALL_UNKNOWN = "unknown"  # nothing to compare against
 
 
+# List order
+
+LEFT_TODO = 0      # something to install or update - a click is waiting
+LEFT_CURRENT = 1   # installed and matching the workshop copy
+LEFT_IDLE = 2      # not subscribed, or superseded by another mod
+
+TODO_WRONG = 0     # files in the game folder are outdated or only partly there
+TODO_NEWER = 1     # files are fine, the author published something newer
+TODO_NOT_COPIED = 2  # subscribed, but the files were never copied by hand
+
+WATCHED_NEW = 0        # the author published something - the reason to watch
+WATCHED_UNCONFIRMED = 1  # no "I installed it" mark yet, so it needs a look
+WATCHED_CURRENT = 2    # nothing new on Steam and the mod is subscribed
+WATCHED_UNKNOWN = 3    # Steam details not fetched yet
+WATCHED_GONE = 4       # not subscribed any more, so nothing to compare against
+
+
+def supported_rank(info):
+    """Place of a mod from `UPDATABLE_MODS` in the left column."""
+    if info["pending"]:
+        return (LEFT_TODO, {"info": TODO_WRONG, "new": TODO_NEWER,
+                            "gray": TODO_NOT_COPIED}.get(info["tag"], 3))
+    return (LEFT_CURRENT if info["tag"] == "ok" else LEFT_IDLE, 0)
+
+
+def watched_rank(tag, subscribed):
+    """Place of a watched mod in the right column."""
+    if tag == "new":
+        return (WATCHED_NEW, 0)
+    if tag == "info":
+        return (WATCHED_UNCONFIRMED, 0)
+    if tag == "ok":
+        return (WATCHED_CURRENT if subscribed else WATCHED_GONE, 0)
+    return (WATCHED_UNKNOWN, 0)
+
+
 def files_identical(a, b):
     """Byte-for-byte comparison; a missing file is never "identical"."""
     try:
@@ -506,6 +542,8 @@ class PZUpdaterApp:
         self._selected = None
         self._cards = {}
         self._manual_cards = {}
+        self._left_order = []     # card keys, in the order they are stacked
+        self._manual_order = []   # the same for the watched column
         self._status_text = ""
         self._status_key = None
         self._summary = None
@@ -608,6 +646,8 @@ class PZUpdaterApp:
             widget.destroy()
         self._cards = {}
         self._manual_cards = {}
+        self._left_order = []
+        self._manual_order = []
         self._toast = None
         self._console = None
         self._overlay_visible = False
@@ -782,6 +822,7 @@ class PZUpdaterApp:
         self.overlay_sub.pack()
 
     def _populate(self):
+        self._left_order = []
         for m in UPDATABLE_MODS:
             card = ctk.CTkFrame(self.scroll, fg_color=CARD, corner_radius=12,
                                 border_width=1, border_color=BORDER)
@@ -834,6 +875,7 @@ class PZUpdaterApp:
         for w in self.manual_scroll.winfo_children():
             w.destroy()
         self._manual_cards = {}
+        self._manual_order = []
         for m in self.manual_mods:
             self._add_manual_card(m)
 
@@ -888,8 +930,9 @@ class PZUpdaterApp:
         done.grid(row=4, column=0, columnspan=2, sticky="ew", padx=12, pady=(4, 12))
 
         card.grid_columnconfigure(0, weight=1)
-        self._manual_cards[wid] = {"name": name, "sub": sub, "badge": badge,
-                                   "sub_badge": sub_badge, "done": done}
+        self._manual_cards[wid] = {"frame": card, "name": name, "sub": sub,
+                                   "badge": badge, "sub_badge": sub_badge,
+                                   "done": done}
 
     def _bind_click(self, widget, key):
         widget.bind("<Button-1>", lambda e: self._select(key))
@@ -1116,11 +1159,25 @@ class PZUpdaterApp:
             return self.t("status.new_update"), "new"
         return self.t("status.up_to_date"), "ok"
 
+    def _restack(self, cards, order, attr, pady):
+        """Stack the card frames so they follow `order` (a list of card keys)."""
+        keys = [k for k in order if k in cards]
+        if getattr(self, attr) == keys:
+            return
+        frames = [cards[k]["frame"] for k in keys]
+        for frame in frames:
+            frame.pack_forget()
+        for frame in frames:
+            frame.pack(fill="x", pady=pady)
+        setattr(self, attr, keys)
+
     def refresh_statuses(self):
         # left column: mods the app updates
+        infos = {}
         for m in UPDATABLE_MODS:
             key = m["key"]
             info = self._status_info(m)
+            infos[key] = info
             status, tag = info["status"], info["tag"]
             details = self.steam_info.get(m["workshop_id"])
             ws = self.paths["workshop"].get(key)
@@ -1154,7 +1211,13 @@ class PZUpdaterApp:
             else:
                 card["action"].grid_remove()
 
+        # A row waiting for a click goes up, one that is not on this machine
+        # goes down; inside a group the registry order stays.
+        self._restack(self._cards, sorted(infos, key=lambda k: supported_rank(infos[k])),
+                      "_left_order", 3)
+
         # right column: watched mods
+        ranks = {}
         for m in self.manual_mods:
             wid = m["workshop_id"]
             status, tag = self._manual_status(m)
@@ -1163,6 +1226,7 @@ class PZUpdaterApp:
             if not card:
                 continue
             subscribed = self._manual_subscribed(wid)
+            ranks[wid] = watched_rank(tag, subscribed)
             # A watched-but-unsubscribed mod is not tracked in the game folder,
             # so a green "up to date" badge would be misleading: show it grey.
             effective_tag = tag if (subscribed or tag != "ok") else "gray"
@@ -1184,6 +1248,12 @@ class PZUpdaterApp:
             if details:
                 sub += "  ·  " + fmt_ts(details["time_updated"])
             card["sub"].configure(text=sub)
+
+        # Something new on Steam goes up, a mod that is not subscribed any more
+        # goes down; inside a group the order they were added in stays.
+        order = [m["workshop_id"] for m in self.manual_mods if m["workshop_id"] in ranks]
+        self._restack(self._manual_cards, sorted(order, key=ranks.get),
+                      "_manual_order", 4)
         self._refresh_buttons()
 
     # -- background work ------------------------------------------------------

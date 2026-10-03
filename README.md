@@ -81,6 +81,12 @@ Mods that are not installed yet are greyed out, and installing one is always a
 separate click. The main **Update** button only touches mods that are already in
 the game folder, so it never pulls something into the game you did not ask for.
 
+Both columns are ordered by what you can do with a mod rather than by the order
+they were added in: a mod with something to install or update sits at the top, an
+installed and current one below it, and a mod that is not on this machine at all
+(nothing subscribed, nothing installed) at the bottom. Rows in the same state keep
+the order of the mod list / the order you added them in.
+
 ## Languages
 
 The interface ships in English and Polish. Switch with the flags in the top-right
