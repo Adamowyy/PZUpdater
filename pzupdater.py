@@ -1258,7 +1258,10 @@ class PZUpdaterApp:
             if not card:
                 continue
             subscribed = self._manual_subscribed(wid)
-            tc, bc = BADGE.get(tag, BADGE[""])
+            # A watched-but-unsubscribed mod is not tracked in the game folder,
+            # so a green "up to date" badge would be misleading: show it grey.
+            effective_tag = tag if (subscribed or tag != "ok") else "gray"
+            tc, bc = BADGE.get(effective_tag, BADGE[""])
             card["badge"].configure(text=status, text_color=tc, fg_color=bc)
             if subscribed:
                 card["sub_badge"].configure(text=self.t("status.subscribed"),
