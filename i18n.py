@@ -29,6 +29,7 @@ STRINGS = {
         "btn.open_steam": "Open on Steam",
         "btn.steam": "↗ Steam",
         "btn.copy_id": "Copy ID",
+        "btn.uninstall": "Uninstall",
         "btn.manual_done": "✓ Mark as updated",
         "btn.cancel": "Cancel",
         "btn.add": "Add",
@@ -45,6 +46,9 @@ STRINGS = {
         "status.pending": "…",
         "status.subscribed": "✓ subscribed",
         "status.no_subscription": "not subscribed",
+        "status.no_patch_build": "No patches for build {}",
+        "status.build_unknown": "Game build unknown, start the game once",
+        "status.build_unverified": "Build not confirmed, start the game once",
 
         # card details line
         "detail.workshop": "Workshop {}",
@@ -55,6 +59,7 @@ STRINGS = {
         "detail.files_missing": "✗ mod files not in the game folder",
         "detail.files_partial": "⚠ {} of {} files match",
         "detail.files_unknown": "no file data",
+        "detail.build": "build {}",
 
         # progress overlay
         "overlay.title": "Checking for updates…",
@@ -88,6 +93,8 @@ STRINGS = {
         "msg.update_failed_log": "Failed to update — {}",
         "msg.start": "Start — Steam: {}",
         "msg.game_dir": "Game: {}",
+        "msg.removing_one": "Removing: {}…",
+        "msg.remove_failed": "Removal failed: {}",
 
         # action results
         "action.jar_missing": "{} not found in the mod folder.",
@@ -98,6 +105,15 @@ STRINGS = {
         "action.source_file_missing": "File '{}' is missing from the mod folder.",
         "action.files_copied": "Copied {} into the game folder.",
         "action.unknown_type": "Unknown mod type.",
+        "action.no_game_build": "Could not read the game build, start the game once.",
+        "action.unverified_game_build": "version.txt does not match the game folder; start the game once after an update.",
+        "action.no_patch_build": "The mod ships no patches for build {}.",
+        "action.no_patch_files": "The patch folder is empty.",
+        "action.patches_installed": "Copied {} for build {}.",
+        "action.patches_replaced": "Copied {} for build {}, removed {} of the previous package.",
+        "action.patches_removed": "Removed {} from the game folder.",
+        "action.patches_removed_kept": "Removed {}, left {} alone (changed since the install).",
+        "action.nothing_to_remove": "Nothing to remove.",
 
         # errors
         "error.steam_no_data": "Steam returned no data for workshop item {}.",
@@ -106,6 +122,8 @@ STRINGS = {
         "dialog.add.title": "Add mod",
         "dialog.add.label": "Workshop ID of the mod:",
         "dialog.add.placeholder": "e.g. 3807349984",
+        "dialog.remove.title": "Uninstall",
+        "dialog.remove.body": "Remove the files of \"{}\" ({}) from the game folder?",
         "toast.title": "Something went wrong",
         "console.title": "Log — PZ Updater",
         "console.heading": "Errors and events",
@@ -131,6 +149,7 @@ STRINGS = {
         "btn.open_steam": "Otwórz na Steam",
         "btn.steam": "↗ Steam",
         "btn.copy_id": "Kopiuj ID",
+        "btn.uninstall": "Odinstaluj",
         "btn.manual_done": "✓ Oznacz jako zaktualizowane",
         "btn.cancel": "Anuluj",
         "btn.add": "Dodaj",
@@ -147,6 +166,9 @@ STRINGS = {
         "status.pending": "…",
         "status.subscribed": "✓ subskrybowany",
         "status.no_subscription": "brak subskrypcji",
+        "status.no_patch_build": "Brak paczek dla builda {}",
+        "status.build_unknown": "Nie znam builda gry, uruchom grę raz",
+        "status.build_unverified": "Build niepotwierdzony, uruchom grę raz",
 
         # card details line
         "detail.workshop": "Workshop {}",
@@ -157,6 +179,7 @@ STRINGS = {
         "detail.files_missing": "✗ brak plików moda w grze",
         "detail.files_partial": "⚠ w grze {} z {} plików zgodnych",
         "detail.files_unknown": "brak danych o plikach",
+        "detail.build": "build {}",
 
         # progress overlay
         "overlay.title": "Sprawdzam aktualizacje…",
@@ -190,6 +213,8 @@ STRINGS = {
         "msg.update_failed_log": "Nie udało się zaktualizować — {}",
         "msg.start": "Start — Steam: {}",
         "msg.game_dir": "Gra: {}",
+        "msg.removing_one": "Usuwam: {}…",
+        "msg.remove_failed": "Błąd usuwania: {}",
 
         # action results
         "action.jar_missing": "Nie znaleziono {} w folderze moda.",
@@ -200,6 +225,15 @@ STRINGS = {
         "action.source_file_missing": "Brak pliku '{}' w folderze moda.",
         "action.files_copied": "Skopiowano {} do folderu gry.",
         "action.unknown_type": "Nieznany typ.",
+        "action.no_game_build": "Nie odczytałem builda gry, uruchom grę raz.",
+        "action.unverified_game_build": "version.txt nie zgadza się z grą w tym folderze; uruchom grę raz po aktualizacji.",
+        "action.no_patch_build": "Mod nie ma paczek dla builda {}.",
+        "action.no_patch_files": "Folder paczki jest pusty.",
+        "action.patches_installed": "Wgrano {} dla builda {}.",
+        "action.patches_replaced": "Wgrano {} dla builda {}, usunięto {} z poprzedniej paczki.",
+        "action.patches_removed": "Usunięto {} z folderu gry.",
+        "action.patches_removed_kept": "Usunięto {}, zostawiłem {} (zmienione po instalacji).",
+        "action.nothing_to_remove": "Nie ma czego usuwać.",
 
         # errors
         "error.steam_no_data": "Steam nie zwrócił danych dla warsztatu {}.",
@@ -208,6 +242,8 @@ STRINGS = {
         "dialog.add.title": "Dodaj mod",
         "dialog.add.label": "Workshop ID moda:",
         "dialog.add.placeholder": "np. 3807349984",
+        "dialog.remove.title": "Odinstaluj",
+        "dialog.remove.body": "Usunąć pliki moda \"{}\" ({}) z folderu gry?",
         "toast.title": "⚠ Wystąpił błąd",
         "console.title": "Log — PZ Updater",
         "console.heading": "Log błędów i zdarzeń",

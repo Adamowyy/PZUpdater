@@ -69,6 +69,24 @@ Then the fields for the chosen type:
 }
 ```
 
+```python
+# class_patch — compiled .class files built for one game build each. The folder
+# used is the one named after the build the game reports, never "the newest", and
+# the app refuses to install when it cannot read that build or check it against
+# projectzomboid.jar. What an install wrote is recorded, so the card can offer
+# Uninstall and only those files are deleted again.
+{
+    "key": "some_patches",
+    "name": "Some Mod - Optional Engine Patches",
+    "workshop_id": "1234567890",
+    "type": "class_patch",
+    "src_dir": os.path.join("mods", "SomeMod", "manual_installation"),
+    "copy_name": "zombie",
+    "target_rel": "zombie",
+    "help": {"en": "...", "pl": "..."},
+}
+```
+
 Two things to check before opening a pull request:
 
 1. The paths really match the current workshop download. Workshop layouts change

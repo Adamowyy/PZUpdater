@@ -8,6 +8,7 @@ import json
 import queue
 import shutil
 import filecmp
+import hashlib
 import sys
 import time
 import threading
@@ -25,6 +26,7 @@ if sys.stderr is None:
     sys.stderr = open(os.devnull, "w", encoding="utf-8")
 
 import customtkinter as ctk
+from tkinter import messagebox
 
 import i18n
 from i18n import Translator
@@ -92,6 +94,26 @@ UPDATABLE_MODS = [
                   "(for example 42.21.0) into the game folder.",
             "pl": "Kopiuje folder 'zombie' z najnowszej wersji (np. 42.21.0) do "
                   "folderu gry.",
+        },
+    },
+    {
+        # Only the compiled patches; the Lua part is a normal Workshop install
+        "key": "tempo_patches",
+        "name": "Tempo - A Performance & FPS Optimizer",
+        "workshop_id": "3736629791",
+        "type": "class_patch",
+        "src_dir": os.path.join("mods", "Tempo_PerfKit", "manual_installation"),
+        "copy_name": "zombie",
+        "target_rel": "zombie",
+        "help": {
+            "en": "Copies Tempo's three optional .class patches into the game folder. "
+                  "They are compiled per game build, so the app takes the folder named "
+                  "after the build the game reports, refuses when it cannot check that, "
+                  "and can take them out again.",
+            "pl": "Kopiuje trzy opcjonalne klasy Tempo do folderu gry. Są kompilowane pod "
+                  "konkretny build gry, więc aplikacja bierze folder o nazwie zgodnej z "
+                  "buildem zgłaszanym przez grę, nie rusza ich, gdy tego nie sprawdzi, "
+                  "i umie je znowu usunąć.",
         },
     },
 ]
@@ -384,7 +406,7 @@ def update_folder_copy(mod, game, ws, t):
         {"version": version}
 
 
-def update_files(mod, game, ws, t):
+def update_files(mod, game, ws, t, prev=None):
     src_dir = os.path.join(ws, mod["src_dir"])
     for fn in mod["files"]:
         if not os.path.isfile(os.path.join(src_dir, fn)):
@@ -394,10 +416,43 @@ def update_files(mod, game, ws, t):
     return True, t("action.files_copied", t.files(len(mod["files"]))), {}
 
 
+def update_class_patch(mod, game, ws, t, prev=None):
+    """Copies the compiled patches of the build the game reports."""
+    build = game_build(game)
+    if not build["build"]:
+        return False, t("action.no_game_build"), {}
+    if not build["trusted"]:
+        return False, t("action.unverified_game_build"), {}
+    src = class_patch_folder(mod, ws, build["build"])
+    if not src:
+        return False, t("action.no_patch_build", build["build"]), {}
+    files = dir_files(src)
+    if not files:
+        return False, t("action.no_patch_files"), {}
+    prefix = mod.get("target_rel") or mod["copy_name"]
+    new = {os.path.join(prefix, rel).replace("\\", "/"): full for rel, full in files.items()}
+    # A package for another build can ship a different set of classes; anything the
+    # previous one wrote and this one does not is left otherwise loaded by the game.
+    old = (prev or {}).get("files") or {}
+    obsolete = [rel for rel in old if rel not in new]
+    for rel, full in new.items():
+        dst = os.path.join(game, *rel.split("/"))
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(full, dst)
+    removed, _kept = remove_installed_files(game, obsolete, old)
+    meta = {"version": build["build"], "files": {rel: file_sha256(full)
+                                                 for rel, full in new.items()}}
+    if removed:
+        return True, t("action.patches_replaced", t.files(len(new)), build["build"],
+                       t.files(len(removed))), meta
+    return True, t("action.patches_installed", t.files(len(new)), build["build"]), meta
+
+
 ACTION_HANDLERS = {
     "jar_replace": update_jar_replace,
     "folder_copy": update_folder_copy,
     "files_copy": update_files,
+    "class_patch": update_class_patch,
 }
 
 
@@ -465,7 +520,129 @@ def dir_files(root):
     return out
 
 
-def mod_targets(mod, ws):
+def file_sha256(path):
+    """Hash of a file, or None when it cannot be read."""
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
+def _stat_sig(path):
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_size, st.st_mtime_ns)
+
+
+def remove_installed_files(game, rels, manifest):
+    """Deletes files an install wrote, by their recorded hash -> (removed, kept)."""
+    removed, kept = [], []
+    for rel in rels:
+        path = os.path.join(game, *str(rel).split("/"))
+        if not os.path.isfile(path):
+            continue
+        recorded = (manifest or {}).get(rel)
+        if recorded and file_sha256(path) != recorded:
+            kept.append(rel)
+            continue
+        try:
+            os.remove(path)
+        except OSError:
+            kept.append(rel)
+            continue
+        removed.append(rel)
+        _drop_empty_dirs(os.path.dirname(path), game)
+    return removed, kept
+
+
+def _drop_empty_dirs(folder, stop):
+    stop = os.path.normcase(os.path.abspath(stop))
+    folder = os.path.abspath(folder)
+    while (os.path.normcase(folder) != stop and os.path.isdir(folder)
+           and not os.listdir(folder)):
+        try:
+            os.rmdir(folder)
+        except OSError:
+            return
+        folder = os.path.dirname(folder)
+
+
+def remove_class_patch(mod, game, t, entry=None):
+    """Takes the class patches of an install out of the game folder again."""
+    files = (entry or {}).get("files") or {}
+    if not files:
+        return False, t("action.nothing_to_remove"), {}
+    removed, kept = remove_installed_files(game, list(files), files)
+    if not removed:
+        return False, t("action.nothing_to_remove"), {"kept": kept}
+    if kept:
+        return True, t("action.patches_removed_kept", t.files(len(removed)),
+                       t.files(len(kept))), {"removed": removed, "kept": kept}
+    return True, t("action.patches_removed", t.files(len(removed))), {"removed": removed}
+
+
+def user_zomboid_dir():
+    """Project Zomboid's folder in the user profile (version.txt, console.txt)."""
+    profile = os.environ.get("USERPROFILE") or os.path.expanduser("~")
+    return os.path.join(profile, "Zomboid")
+
+
+def jar_revision(game_dir):
+    """Revision stamped into projectzomboid.jar, from zombie/GitVersion.class."""
+    if not game_dir:
+        return None
+    try:
+        with zipfile.ZipFile(os.path.join(game_dir, "projectzomboid.jar")) as z:
+            raw = z.read("zombie/GitVersion.class")
+    except (OSError, KeyError, zipfile.BadZipFile, RuntimeError):
+        return None
+    m = re.search(rb"[0-9a-f]{10}", raw)
+    return m.group(0).decode("ascii") if m else None
+
+
+GAME_BUILD_CACHE = {}
+
+
+def game_build(game_dir):
+    """{"build", "revision", "jar_revision", "trusted"} for the game in this folder."""
+    version_file = os.path.join(user_zomboid_dir(), "version.txt")
+    jar = os.path.join(game_dir, "projectzomboid.jar") if game_dir else None
+    key = (os.path.normcase(str(game_dir)), _stat_sig(version_file),
+           _stat_sig(jar) if jar else None)
+    if key in GAME_BUILD_CACHE:
+        return GAME_BUILD_CACHE[key]
+    build = revision = None
+    try:
+        with open(version_file, "r", encoding="utf-8", errors="replace") as f:
+            first = f.readline().split()
+        if first:
+            build = first[0]
+        if len(first) > 1:
+            revision = first[1]
+    except OSError:
+        pass
+    jar_rev = jar_revision(game_dir)
+    out = {"build": build, "revision": revision, "jar_revision": jar_rev,
+           "trusted": bool(build and revision and jar_rev and revision == jar_rev)}
+    GAME_BUILD_CACHE[key] = out
+    return out
+
+
+def class_patch_folder(mod, ws, build):
+    """Folder holding the patches compiled for this game build, or None."""
+    if not ws or not build:
+        return None
+    src = os.path.join(ws, mod["src_dir"], build, mod["copy_name"])
+    return src if os.path.isdir(src) else None
+
+
+def mod_targets(mod, ws, game=None):
     """What a mod writes into the game folder: [(relative path, kind, source)]."""
     if not ws or not os.path.isdir(ws):
         return []
@@ -479,6 +656,13 @@ def mod_targets(mod, ws):
         version_dir = newest_version_folder(os.path.join(ws, mod["manual_dir"]))
         src = os.path.join(version_dir, mod["copy_name"]) if version_dir else None
         return [(mod["target_rel"], "dir", src)] if src and os.path.isdir(src) else []
+    if kind == "class_patch":
+        src = class_patch_folder(mod, ws, game_build(game)["build"] if game else None)
+        if not src:
+            return []
+        prefix = mod.get("target_rel") or mod["copy_name"]
+        return [("/".join((prefix, rel.replace("\\", "/"))), "file", full)
+                for rel, full in dir_files(src).items()]
     return []
 
 
@@ -495,7 +679,7 @@ def mod_install_state(mod, game, workshop_map, mods=None, sources=None):
     """Files of a mod inside the game folder -> (state, matching, total)."""
     if not game:
         return INSTALL_UNKNOWN, 0, 0
-    targets = mod_targets(mod, workshop_map.get(mod["key"]))
+    targets = mod_targets(mod, workshop_map.get(mod["key"]), game)
     if not targets:
         return INSTALL_UNKNOWN, 0, 0
     mods = list(mods) if mods is not None else [mod]
@@ -538,6 +722,7 @@ SUBTLE = "#6b7280"
 ACCENT = "#3b82f6"
 ACCENT_HOVER = "#2563eb"
 ON_ACCENT = "#ffffff"
+DANGER = "#dc2626"      # the uninstall button: the only action that deletes
 
 DISABLED_BG = "#3a3d42"
 DISABLED_TEXT = "#6b7280"
@@ -896,6 +1081,14 @@ class PZUpdaterApp:
                           corner_radius=6, font=self.f_muted,
                           command=lambda w=wid: self._copy_id(w)
                           ).pack(side="left", padx=(8, 0))
+            # Appears only for a mod whose install the app recorded, so it can take
+            # exactly those files back out again.
+            rem = ctk.CTkButton(foot, text=self.t("btn.uninstall"), width=88, height=22,
+                                fg_color="transparent", hover_color=CARD_SEL,
+                                text_color=DANGER, corner_radius=6, font=self.f_muted,
+                                command=lambda k=m["key"]: self.do_remove(k))
+            rem.pack(side="left", padx=(8, 0))
+            rem.pack_forget()
 
             act = ctk.CTkButton(card, text=self.t("btn.install"), height=30,
                                 fg_color=ACCENT, hover_color=ACCENT_HOVER,
@@ -907,7 +1100,7 @@ class PZUpdaterApp:
             card.grid_columnconfigure(0, weight=1)
 
             self._cards[m["key"]] = {"frame": card, "name": name, "badge": badge,
-                                     "sub": sub, "action": act}
+                                     "sub": sub, "action": act, "remove": rem}
             for w in (card, name, badge, sub):
                 self._bind_click(w, m["key"])
 
@@ -980,6 +1173,11 @@ class PZUpdaterApp:
         widget.bind("<Button-1>", lambda e: self._select(key))
 
     # -- mod state ------------------------------------------------------------
+    def _installed_files(self, mod):
+        """Files the last install wrote for this mod, as recorded in the state."""
+        entry = self.state.get("mods", {}).get(mod["workshop_id"]) or {}
+        return entry.get("files") or {}
+
     def _install_state(self, mod):
         return mod_install_state(mod, self.paths["game_dir"], self.paths["workshop"],
                                  UPDATABLE_MODS, self._sources)
@@ -1009,6 +1207,20 @@ class PZUpdaterApp:
         if not ws:
             info.update(status=self.t("status.not_subscribed"), tag="gray", muted=True)
             return info
+        if mod["type"] == "class_patch":
+            # Compiled per game build: without the matching folder, or without a way
+            # to tell which build the game folder holds, nothing may be copied.
+            build = game_build(self.paths["game_dir"])
+            if not build["build"]:
+                info.update(status=self.t("status.build_unknown"), tag="old", muted=True)
+                return info
+            if not build["trusted"]:
+                info.update(status=self.t("status.build_unverified"), tag="old", muted=True)
+                return info
+            if not class_patch_folder(mod, ws, build["build"]):
+                info.update(status=self.t("status.no_patch_build", build["build"]),
+                            tag="old", muted=True)
+                return info
         if self._is_obsolete(mod):
             info.update(status=self.t("status.deprecated"), tag="old")
             return info
@@ -1059,11 +1271,13 @@ class PZUpdaterApp:
             self.btn_add.configure(state="disabled")
             for card in self._cards.values():
                 card["action"].configure(state="disabled")
+                card["remove"].configure(state="disabled")
             return
         self.btn_check.configure(state="normal")
         self.btn_add.configure(state="normal")
         for card in self._cards.values():
             card["action"].configure(state="normal")
+            card["remove"].configure(state="normal")
         if self._installed_for_update():
             self.btn_update.configure(state="normal", text=self.t("btn.update"),
                                       fg_color=ACCENT, hover_color=ACCENT_HOVER,
@@ -1252,6 +1466,10 @@ class PZUpdaterApp:
                 version_dir = newest_version_folder(os.path.join(ws, m["manual_dir"]))
                 if version_dir and info["install"] != INSTALL_UNKNOWN:
                     bits.append(self.t("detail.version", os.path.basename(version_dir)))
+            if m["type"] == "class_patch" and ws:
+                build = game_build(self.paths["game_dir"])["build"]
+                if build:
+                    bits.append(self.t("detail.build", build))
             if self._is_obsolete(m):
                 bits.append(self.t("detail.fix_obsolete"))
             bits.append(self._files_note(info) if ws else self.t("status.no_subscription"))
@@ -1275,6 +1493,12 @@ class PZUpdaterApp:
                 card["action"].grid()
             else:
                 card["action"].grid_remove()
+
+            removable = bool(self._installed_files(m))
+            if removable and not card["remove"].winfo_manager():
+                card["remove"].pack(side="left", padx=(8, 0))
+            elif not removable and card["remove"].winfo_manager():
+                card["remove"].pack_forget()
 
         # A row waiting for a click goes up, one that is not on this machine
         # goes down; inside a group the registry order stays.
@@ -1403,6 +1627,36 @@ class PZUpdaterApp:
         if mod is not None:
             self.do_update([mod])
 
+    def do_remove(self, key):
+        """Takes back exactly the files the app itself put in the game folder."""
+        mod = next((m for m in UPDATABLE_MODS if m["key"] == key), None)
+        if mod is None or self._busy or not self.paths["game_dir"]:
+            return
+        entry = self.state.get("mods", {}).get(mod["workshop_id"]) or {}
+        files = entry.get("files") or {}
+        if not files:
+            return
+        if not messagebox.askyesno(self.t("dialog.remove.title"),
+                                   self.t("dialog.remove.body", self._mod_name(mod),
+                                          self.t.files(len(files)))):
+            return
+        self.set_status_key("msg.removing_one", self._mod_name(mod))
+        ok, msg, meta = remove_class_patch(mod, self.paths["game_dir"], self.t, entry)
+        if ok:
+            self.state.get("mods", {}).pop(mod["workshop_id"], None)
+            save_state(self.state)
+            self._log("INFO", msg)
+            self.set_status(msg)
+            kept = meta.get("kept") or []
+            if kept:
+                self._log("ERROR", self.t("action.patches_removed_kept",
+                                          self.t.files(len(meta.get("removed") or [])),
+                                          self.t.files(len(kept))))
+        else:
+            self._log("ERROR", self.t("msg.remove_failed", msg))
+            self.set_status_key("msg.remove_failed", msg)
+        self.refresh_statuses()
+
     def do_update(self, mods=None):
         """Updates the given mods; without an argument only the ones already in
         the game folder (the main button never installs a missing mod)."""
@@ -1444,7 +1698,8 @@ class PZUpdaterApp:
                     if handler is None:
                         ok, msg, meta = False, self.t("action.unknown_type"), {}
                     else:
-                        ok, msg, meta = handler(m, self.paths["game_dir"], ws, self.t)
+                        prev = self.state.get("mods", {}).get(m["workshop_id"]) or {}
+                        ok, msg, meta = handler(m, self.paths["game_dir"], ws, self.t, prev)
                     if ok:
                         details = steam_get_details(m["workshop_id"])
                         self.steam_info[m["workshop_id"]] = details
@@ -1452,6 +1707,8 @@ class PZUpdaterApp:
                                  "applied_at": datetime.datetime.now().strftime("%d.%m.%Y %H:%M")}
                         if meta.get("version"):
                             entry["applied_version"] = meta["version"]
+                        if meta.get("files"):
+                            entry["files"] = meta["files"]
                         self.state.setdefault("mods", {})[m["workshop_id"]] = entry
                 except Exception as e:  # noqa: BLE001 - one bad mod must not stop the rest
                     ok, msg = False, self._error_text(e)

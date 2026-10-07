@@ -26,8 +26,9 @@ There is no installer, so there is nothing to uninstall either — delete the ex
 The app keeps its state (applied mod timestamps, watched mods, language) in
 `%APPDATA%\PZUpdater\state.json`; delete that file too if you want a clean slate.
 
-The app only writes the mod paths listed below. No backups, no deletions, and it
-touches nothing else in the game folder.
+The app only writes the mod paths listed below. No backups, and it touches
+nothing else in the game folder; what it installed it can also take back again
+(see below).
 
 ## Mod requests
 
@@ -53,6 +54,7 @@ add the ones that can be automated safely.
 | ZombieBuddy | 3619862853 | `ZombieBuddy.jar` and `zbNative.dll` into the game folder (the Java mod loader) |
 | [B42] ZombieBuddy Extensions | 3807686870 | replaces `ZombieBuddy.jar` with the extension build (the 42.21 temporary fix under its new name) |
 | Better Car Physics | 2909035179 | the `zombie` folder from the newest version in `manual_installation` |
+| Tempo - A Performance & FPS Optimizer | 3736629791 | the three compiled `.class` patches, from the `manual_installation` folder named after the game build |
 
 Mods in the right-hand column of the window are **watched**: notifications only.
 The app tells you when their author published something and you install it
@@ -80,6 +82,18 @@ So the target files of every mod are compared against the workshop copy:
 Mods that are not installed yet are greyed out, and installing one is always a
 separate click. The main **Update** button only touches mods that are already in
 the game folder, so it never pulls something into the game you did not ask for.
+
+Two things are worth knowing about the mods that need hand work:
+
+- **Compiled patches are tied to a game build.** Tempo's three `.class` files are
+  built for one build each, so the app copies the folder named after the build the
+  game reports, and refuses to install when it cannot read that build or check it
+  against the game folder. After a game update, start the game once before
+  installing them again.
+- **What the app installed, it can take back.** A mod whose install the app
+  recorded has an **Uninstall** button that deletes exactly those files, and only
+  while they still have the bytes the app wrote. Anything else in the game folder
+  stays untouched; a file somebody changed since is left alone and reported.
 
 Both columns are ordered by what you can do with a mod rather than by the order
 they were added in: a mod with something to install or update sits at the top, an

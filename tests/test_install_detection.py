@@ -7,6 +7,7 @@ import sys
 import shutil
 import tempfile
 import unittest
+import zipfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -198,6 +199,15 @@ class TestRealRegistry(TempCase):
             ws = self.p("content", mod["workshop_id"])
             os.makedirs(ws, exist_ok=True)
             self.ws_map[mod["key"]] = ws
+        # Mody kompilowane pod build gry (class_patch) potrzebują version.txt i rewizji
+        # z projectzomboid.jar, inaczej aplikacja słusznie nic nie instaluje.
+        self._env = os.environ.get("USERPROFILE")
+        os.environ["USERPROFILE"] = self.p("profile")
+        write(os.path.join(self.p("profile"), "Zomboid", "version.txt"),
+              b"42.21.0 4a0e9546ec\nrevision=4a0e9546ec pzbullet=1.0.0.28\n")
+        with zipfile.ZipFile(os.path.join(self.game, "projectzomboid.jar"), "w") as z:
+            z.writestr("zombie/GitVersion.class", b"\xca\xfe\xba\xbe4a0e9546ec")
+        pz.GAME_BUILD_CACHE.clear()
         # zombiebuddy
         base = self.ws_map["zombiebuddy"]
         for fn in ("ZombieBuddy.jar", "zbNative.dll"):
@@ -206,6 +216,12 @@ class TestRealRegistry(TempCase):
         write(os.path.join(self.ws_map["zombiebuddy_fix"], "mods",
                            "ZombieBuddy_Extensions", "42.21", "ZombieBuddy.jar"),
               b"FIX")
+        # tempo_patches — paczka klas dla builda 42.21.0
+        tempo = os.path.join(self.ws_map["tempo_patches"], "mods", "Tempo_PerfKit",
+                             "manual_installation", "42.21.0", "zombie")
+        for rel in ("iso/IsoChunkMap.class", "iso/IsoWorld.class",
+                    "core/PerformanceSettings.class"):
+            write(os.path.join(tempo, *rel.split("/")), rel.encode())
         # better_car_physics — kilka wersji, kopiowana ma być najnowsza
         manual = os.path.join(self.ws_map["better_car_physics"], "mods",
                               "BetterCarPhysics", "manual_installation")
@@ -214,6 +230,14 @@ class TestRealRegistry(TempCase):
               b"new-car")
         write(os.path.join(manual, "42.21.0", "zombie", "vehicles", "BaseVehicle.class"),
               b"new-base")
+
+    def tearDown(self):
+        if self._env is None:
+            os.environ.pop("USERPROFILE", None)
+        else:
+            os.environ["USERPROFILE"] = self._env
+        pz.GAME_BUILD_CACHE.clear()
+        super().tearDown()
 
     def test_unknown_without_workshop(self):
         state = pz.mod_install_state(pz.UPDATABLE_MODS[0], self.game, {}, pz.UPDATABLE_MODS)[0]
