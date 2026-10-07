@@ -15,6 +15,7 @@ import datetime
 import webbrowser
 import urllib.request
 import urllib.parse
+import zipfile
 
 # PyInstaller --windowed leaves sys.stdout/stderr as None, and a stray print()
 # would crash the exe before any window shows up.
@@ -64,15 +65,18 @@ UPDATABLE_MODS = [
         "jar_name": "ZombieBuddy.jar",
         "search_under": "mods",
         "target_rel": "ZombieBuddy.jar",
-        # Once ZombieBuddy ships a newer jar of its own, this fix is pointless.
+        # Once ZombieBuddy ships a release newer than the one this jar is built
+        # on, the official updater replaces it anyway and this entry is pointless.
         "obsolete_if_newer_than": "3619862853",
         "help": {
             "en": "Replaces ZombieBuddy.jar in the game folder with the jar from "
                   "ZombieBuddy Extensions (the 42.21 temporary fix under its new "
-                  "name). Skipped once ZombieBuddy gets a newer release.",
+                  "name). Skipped once ZombieBuddy is newer than the release this "
+                  "jar was built on.",
             "pl": "Podmienia ZombieBuddy.jar w folderze gry na wersję z ZombieBuddy "
                   "Extensions (dawny Temporary Fix dla 42.21). Przestaje się "
-                  "nakładać, gdy ZombieBuddy dostanie nowszą wersję.",
+                  "nakładać, gdy ZombieBuddy wyprzedzi wersję, na której zbudowany "
+                  "jest ten jar.",
         },
     },
     {
@@ -265,6 +269,41 @@ def newest_version_folder(directory):
         if best_key is None or key > best_key:
             best, best_key = full, key
     return best
+
+
+JAR_VERSION_CACHE = {}
+
+
+def jar_version(path):
+    """Version a jar declares in its manifest, None when it cannot be read."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = (os.path.normcase(os.path.abspath(path)), st.st_size, st.st_mtime_ns)
+    if key in JAR_VERSION_CACHE:
+        return JAR_VERSION_CACHE[key]
+    version = None
+    try:
+        with zipfile.ZipFile(path) as z:
+            text = z.read("META-INF/MANIFEST.MF").decode("utf-8", "replace")
+        for line in text.splitlines():
+            name, _, value = line.partition(":")
+            if name.strip().lower() == "implementation-version":
+                version = value.strip() or None
+                break
+    except (OSError, KeyError, zipfile.BadZipFile, RuntimeError):
+        version = None
+    JAR_VERSION_CACHE[key] = version
+    return version
+
+
+def superseded_by_version(own_version, other_version):
+    """True when the other jar is built on a newer release than this one."""
+    own, other = version_key(own_version or ""), version_key(other_version or "")
+    if not own or not other:
+        return None
+    return other > own
 
 
 # State: applied timestamps, watched mods, language
@@ -1147,13 +1186,28 @@ class PZUpdaterApp:
                 pass
 
     # -- statuses -------------------------------------------------------------
+    def _jar_version_of(self, mod):
+        """Version of the jar this mod would copy into the game folder."""
+        for _rel, kind, src in mod_targets(mod, self.paths["workshop"].get(mod["key"])):
+            if kind == "file" and src:
+                version = jar_version(src)
+                if version:
+                    return version
+        return None
+
     def _is_obsolete(self, mod):
-        """True when another mod makes this one pointless (the fix vs the loader)."""
-        ref = mod.get("obsolete_if_newer_than")
-        if not ref:
+        """True when another mod makes this one pointless."""
+        ref_id = mod.get("obsolete_if_newer_than")
+        if not ref_id:
             return False
+        ref = next((m for m in UPDATABLE_MODS if m["workshop_id"] == ref_id), None)
+        if ref is not None:
+            verdict = superseded_by_version(self._jar_version_of(mod),
+                                            self._jar_version_of(ref))
+            if verdict is not None:
+                return verdict
         own = self.steam_info.get(mod["workshop_id"], {}).get("time_updated", 0)
-        newer = self.steam_info.get(ref, {}).get("time_updated", 0)
+        newer = self.steam_info.get(ref_id, {}).get("time_updated", 0)
         return own > 0 and newer > 0 and newer > own
 
     def _manual_status(self, m):
