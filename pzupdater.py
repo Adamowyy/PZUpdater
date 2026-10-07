@@ -56,8 +56,9 @@ UPDATABLE_MODS = [
         },
     },
     {
+        # Renamed to "[B42] ZombieBuddy Extensions"; the jar and its target are unchanged
         "key": "zombiebuddy_fix",
-        "name": "Temporary Fix for ZombieBuddy",
+        "name": "[B42] ZombieBuddy Extensions",
         "workshop_id": "3807686870",
         "type": "jar_replace",
         "jar_name": "ZombieBuddy.jar",
@@ -66,10 +67,12 @@ UPDATABLE_MODS = [
         # Once ZombieBuddy ships a newer jar of its own, this fix is pointless.
         "obsolete_if_newer_than": "3619862853",
         "help": {
-            "en": "Replaces ZombieBuddy.jar in the game folder with a build that "
-                  "works on 42.21. Skipped once ZombieBuddy gets a newer release.",
-            "pl": "Podmienia ZombieBuddy.jar w folderze gry na wersję zgodną z 42.21. "
-                  "Przestaje się nakładać, gdy ZombieBuddy dostanie nowszą wersję.",
+            "en": "Replaces ZombieBuddy.jar in the game folder with the jar from "
+                  "ZombieBuddy Extensions (the 42.21 temporary fix under its new "
+                  "name). Skipped once ZombieBuddy gets a newer release.",
+            "pl": "Podmienia ZombieBuddy.jar w folderze gry na wersję z ZombieBuddy "
+                  "Extensions (dawny Temporary Fix dla 42.21). Przestaje się "
+                  "nakładać, gdy ZombieBuddy dostanie nowszą wersję.",
         },
     },
     {
@@ -952,12 +955,18 @@ class PZUpdaterApp:
             return self.t("detail.files_partial", ok, total)
         return self.t("detail.files_unknown")
 
+    def _mod_name(self, mod):
+        """Live workshop title when Steam answered, the registry name otherwise."""
+        details = self.steam_info.get(mod["workshop_id"]) or {}
+        return (details.get("title") or "").strip() or mod["name"]
+
     def _status_info(self, mod):
         """Badge text, file state and the action available for one mod."""
         ws = self.paths["workshop"].get(mod["key"])
         install, ok, total = self._install_state(mod)
         info = {"install": install, "ok": ok, "total": total, "pending": None,
-                "muted": False, "status": "", "tag": ""}
+                "muted": False, "status": "", "tag": "",
+                "name": self._mod_name(mod)}
         if not ws:
             info.update(status=self.t("status.not_subscribed"), tag="gray", muted=True)
             return info
@@ -1048,7 +1057,7 @@ class PZUpdaterApp:
             c["frame"].configure(border_color=ACCENT if sel else BORDER,
                                  border_width=2 if sel else 1,
                                  fg_color=CARD_SEL if sel else CARD)
-        self.info_name.configure(text=mod["name"])
+        self.info_name.configure(text=self._mod_name(mod))
         self.info_help.configure(text=self.t.help_text(mod.get("help")))
 
     def set_status(self, text):
@@ -1194,6 +1203,8 @@ class PZUpdaterApp:
             bits.append(self._files_note(info) if ws else self.t("status.no_subscription"))
 
             card = self._cards[key]
+            if card["name"].cget("text") != info["name"]:
+                card["name"].configure(text=info["name"])
             if info["muted"]:
                 tc, bc = BADGE["gray"]
                 card["name"].configure(text_color=SUBTLE)
@@ -1322,8 +1333,10 @@ class PZUpdaterApp:
             self._hide_overlay_after_min_time()
             self._reveal()
             actions = self._pending_actions()
-            installs = [m["name"] for m in UPDATABLE_MODS if actions.get(m["key"]) == "install"]
-            updates = [m["name"] for m in UPDATABLE_MODS if actions.get(m["key"]) == "update"]
+            installs = [self._mod_name(m) for m in UPDATABLE_MODS
+                        if actions.get(m["key"]) == "install"]
+            updates = [self._mod_name(m) for m in UPDATABLE_MODS
+                       if actions.get(m["key"]) == "update"]
             updates += [m["name"] for m in self.manual_mods
                         if self._manual_status(m)[1] == "new"]
             self.set_status_summary(installs, updates)
@@ -1359,7 +1372,7 @@ class PZUpdaterApp:
         installing = any(actions.get(m["key"]) == "install" for m in mods)
         if len(mods) == 1:
             self.set_status_key("msg.installing_one" if installing else "msg.updating_one",
-                                mods[0]["name"])
+                                self._mod_name(mods[0]))
         else:
             self.set_status_key("msg.installing_many" if installing else "msg.updating_many",
                                 len(mods))
@@ -1388,7 +1401,7 @@ class PZUpdaterApp:
                         self.state.setdefault("mods", {})[m["workshop_id"]] = entry
                 except Exception as e:  # noqa: BLE001 - one bad mod must not stop the rest
                     ok, msg = False, self._error_text(e)
-                results.append((m["name"], ok, msg))
+                results.append((self._mod_name(m), ok, msg))
             save_state(self.state)
             return results
 

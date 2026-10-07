@@ -75,8 +75,8 @@ Two things to check before opening a pull request:
    (`mods/...` in older packs, `Contents/mods/...` in newer ones) — open the
    folder in `steamapps/workshop/content/108600/<workshop_id>/` and look.
 2. Order matters if two mods write the same file: the one that has to win goes
-   lower in the list, because mods are applied top to bottom. That is how the
-   ZombieBuddy fix overwrites the loader's own jar.
+   lower in the list, because mods are applied top to bottom. That is how
+   ZombieBuddy Extensions overwrites the loader's own jar.
 
 ## Adding a language
 

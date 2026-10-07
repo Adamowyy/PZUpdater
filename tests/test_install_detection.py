@@ -122,7 +122,7 @@ class TestFolderCopyInstallState(TempCase):
 
 
 class TestFilesCopyWithAlternateSource(TempCase):
-    """ZombieBuddy.jar jest w grze z moda podstawowego ALBO z fixa."""
+    """ZombieBuddy.jar jest w grze z moda podstawowego ALBO z Extensions."""
 
     def setUp(self):
         super().setUp()
@@ -133,8 +133,10 @@ class TestFilesCopyWithAlternateSource(TempCase):
             b"BASE-JAR", mtime=1700000000)
         write(os.path.join(self.ws_base, "mods", "ZombieBuddy", "libs", "zbNative.dll"),
               b"NATIVE", mtime=1700000000)
+        # Real layout of workshop 3807686870 since the author renamed the mod
+        # from "Temporary Fix for ZombieBuddy" to "[B42] ZombieBuddy Extensions".
         self.fix_jar = write(
-            os.path.join(self.ws_fix, "mods", "ZombieBuddy_B42.21_TemporaryFix",
+            os.path.join(self.ws_fix, "mods", "ZombieBuddy_Extensions",
                          "42.21", "ZombieBuddy.jar"),
             b"FIX-JAR", mtime=1700000000)
         self.base = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
@@ -200,9 +202,9 @@ class TestRealRegistry(TempCase):
         base = self.ws_map["zombiebuddy"]
         for fn in ("ZombieBuddy.jar", "zbNative.dll"):
             write(os.path.join(base, "mods", "ZombieBuddy", "libs", fn), fn.encode())
-        # zombiebuddy_fix
+        # zombiebuddy_fix (workshop 3807686870, "[B42] ZombieBuddy Extensions")
         write(os.path.join(self.ws_map["zombiebuddy_fix"], "mods",
-                           "ZombieBuddy_B42.21_TemporaryFix", "42.21", "ZombieBuddy.jar"),
+                           "ZombieBuddy_Extensions", "42.21", "ZombieBuddy.jar"),
               b"FIX")
         # better_car_physics — kilka wersji, kopiowana ma być najnowsza
         manual = os.path.join(self.ws_map["better_car_physics"], "mods",

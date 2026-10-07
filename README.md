@@ -51,7 +51,7 @@ add the ones that can be automated safely.
 | Mod | Workshop ID | What it installs |
 | --- | --- | --- |
 | ZombieBuddy | 3619862853 | `ZombieBuddy.jar` and `zbNative.dll` into the game folder (the Java mod loader) |
-| Temporary Fix for ZombieBuddy | 3807686870 | replaces `ZombieBuddy.jar` with a build that works on 42.21 |
+| [B42] ZombieBuddy Extensions | 3807686870 | replaces `ZombieBuddy.jar` with the extension build (the 42.21 temporary fix under its new name) |
 | Better Car Physics | 2909035179 | the `zombie` folder from the newest version in `manual_installation` |
 
 Mods in the right-hand column of the window are **watched**: notifications only.
