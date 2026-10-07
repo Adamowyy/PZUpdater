@@ -46,9 +46,9 @@ STRINGS = {
         "status.pending": "…",
         "status.subscribed": "✓ subscribed",
         "status.no_subscription": "not subscribed",
-        "status.no_patch_build": "No patches for build {}",
-        "status.build_unknown": "Game build unknown, start the game once",
-        "status.build_unverified": "Build not confirmed, start the game once",
+        "status.no_patch_build": "No files for game version {}",
+        "status.build_unknown": "Game version unknown, start the game once",
+        "status.build_unverified": "Start the game once to confirm the version",
 
         # card details line
         "detail.workshop": "Workshop {}",
@@ -59,7 +59,9 @@ STRINGS = {
         "detail.files_missing": "✗ mod files not in the game folder",
         "detail.files_partial": "⚠ {} of {} files match",
         "detail.files_unknown": "no file data",
-        "detail.build": "build {}",
+        "detail.build": "game version {}",
+        "detail.patch_wait": "the mod has no files for this version yet",
+        "detail.patch_start_game": "start the game once so the app can read your version",
 
         # progress overlay
         "overlay.title": "Checking for updates…",
@@ -105,14 +107,14 @@ STRINGS = {
         "action.source_file_missing": "File '{}' is missing from the mod folder.",
         "action.files_copied": "Copied {} into the game folder.",
         "action.unknown_type": "Unknown mod type.",
-        "action.no_game_build": "Could not read the game build, start the game once.",
-        "action.unverified_game_build": "version.txt does not match the game folder; start the game once after an update.",
-        "action.no_patch_build": "The mod ships no patches for build {}.",
-        "action.no_patch_files": "The patch folder is empty.",
-        "action.patches_installed": "Copied {} for build {}.",
-        "action.patches_replaced": "Copied {} for build {}, removed {} of the previous package.",
+        "action.no_game_build": "Could not tell which game version you have, start the game once.",
+        "action.unverified_game_build": "The game was updated and has not been started since, start it once and try again.",
+        "action.no_patch_build": "The mod has no files for game version {} yet, wait for the mod to update.",
+        "action.no_patch_files": "The mod's folder is empty.",
+        "action.patches_installed": "Copied {} (game version {}).",
+        "action.patches_replaced": "Copied {} (game version {}), removed {} of the old files.",
         "action.patches_removed": "Removed {} from the game folder.",
-        "action.patches_removed_kept": "Removed {}, left {} alone (changed since the install).",
+        "action.patches_removed_kept": "Removed {}, kept {} (changed after the install).",
         "action.nothing_to_remove": "Nothing to remove.",
 
         # errors
@@ -166,9 +168,9 @@ STRINGS = {
         "status.pending": "…",
         "status.subscribed": "✓ subskrybowany",
         "status.no_subscription": "brak subskrypcji",
-        "status.no_patch_build": "Brak paczek dla builda {}",
-        "status.build_unknown": "Nie znam builda gry, uruchom grę raz",
-        "status.build_unverified": "Build niepotwierdzony, uruchom grę raz",
+        "status.no_patch_build": "Brak plików dla wersji {}",
+        "status.build_unknown": "Nie znam wersji gry, uruchom grę raz",
+        "status.build_unverified": "Uruchom grę raz, żeby potwierdzić wersję",
 
         # card details line
         "detail.workshop": "Workshop {}",
@@ -179,7 +181,9 @@ STRINGS = {
         "detail.files_missing": "✗ brak plików moda w grze",
         "detail.files_partial": "⚠ w grze {} z {} plików zgodnych",
         "detail.files_unknown": "brak danych o plikach",
-        "detail.build": "build {}",
+        "detail.build": "wersja gry {}",
+        "detail.patch_wait": "mod nie ma jeszcze plików dla tej wersji",
+        "detail.patch_start_game": "uruchom grę raz, żeby apka poznała Twoją wersję",
 
         # progress overlay
         "overlay.title": "Sprawdzam aktualizacje…",
@@ -225,14 +229,14 @@ STRINGS = {
         "action.source_file_missing": "Brak pliku '{}' w folderze moda.",
         "action.files_copied": "Skopiowano {} do folderu gry.",
         "action.unknown_type": "Nieznany typ.",
-        "action.no_game_build": "Nie odczytałem builda gry, uruchom grę raz.",
-        "action.unverified_game_build": "version.txt nie zgadza się z grą w tym folderze; uruchom grę raz po aktualizacji.",
-        "action.no_patch_build": "Mod nie ma paczek dla builda {}.",
-        "action.no_patch_files": "Folder paczki jest pusty.",
-        "action.patches_installed": "Wgrano {} dla builda {}.",
-        "action.patches_replaced": "Wgrano {} dla builda {}, usunięto {} z poprzedniej paczki.",
+        "action.no_game_build": "Nie wiem, którą wersję gry masz, uruchom grę raz.",
+        "action.unverified_game_build": "Gra została zaktualizowana i od tego czasu nie uruchomiona. Uruchom ją raz i spróbuj ponownie.",
+        "action.no_patch_build": "Mod nie ma jeszcze plików dla wersji gry {}, poczekaj na jego aktualizację.",
+        "action.no_patch_files": "Folder moda jest pusty.",
+        "action.patches_installed": "Wgrano {} (wersja gry {}).",
+        "action.patches_replaced": "Wgrano {} (wersja gry {}), usunięto {} starych plików.",
         "action.patches_removed": "Usunięto {} z folderu gry.",
-        "action.patches_removed_kept": "Usunięto {}, zostawiłem {} (zmienione po instalacji).",
+        "action.patches_removed_kept": "Usunięto {}, zostawiono {} (zmienione po instalacji).",
         "action.nothing_to_remove": "Nie ma czego usuwać.",
 
         # errors

@@ -106,14 +106,16 @@ UPDATABLE_MODS = [
         "copy_name": "zombie",
         "target_rel": "zombie",
         "help": {
-            "en": "Copies Tempo's three optional .class patches into the game folder. "
-                  "They are compiled per game build, so the app takes the folder named "
-                  "after the build the game reports, refuses when it cannot check that, "
-                  "and can take them out again.",
-            "pl": "Kopiuje trzy opcjonalne klasy Tempo do folderu gry. Są kompilowane pod "
-                  "konkretny build gry, więc aplikacja bierze folder o nazwie zgodnej z "
-                  "buildem zgłaszanym przez grę, nie rusza ich, gdy tego nie sprawdzi, "
-                  "i umie je znowu usunąć.",
+            "en": "Copies Tempo's three optional files into the game folder. They are "
+                  "made for one game version each, so the app takes the ones matching "
+                  "yours. If the game gets a newer version and the mod has no files for "
+                  "it yet, nothing is copied: remove the old ones with Uninstall and "
+                  "wait for the mod to update.",
+            "pl": "Kopiuje trzy opcjonalne pliki Tempo do folderu gry. Są zrobione pod "
+                  "konkretną wersję gry, więc aplikacja wgrywa tylko te zgodne z Twoją. "
+                  "Gdy gra dostanie nowszą wersję i mod nie będzie miał dla niej "
+                  "plików, nic nie zostanie wgrane: usuń stare przyciskiem Odinstaluj i "
+                  "poczekaj na aktualizację moda.",
         },
     },
 ]
@@ -1202,24 +1204,27 @@ class PZUpdaterApp:
         ws = self.paths["workshop"].get(mod["key"])
         install, ok, total = self._install_state(mod)
         info = {"install": install, "ok": ok, "total": total, "pending": None,
-                "muted": False, "status": "", "tag": "",
+                "muted": False, "status": "", "tag": "", "files_note": None,
                 "name": self._mod_name(mod)}
         if not ws:
             info.update(status=self.t("status.not_subscribed"), tag="gray", muted=True)
             return info
         if mod["type"] == "class_patch":
-            # Compiled per game build: without the matching folder, or without a way
-            # to tell which build the game folder holds, nothing may be copied.
+            # Made for one game version each: without the matching files, or without a
+            # way to tell which version the game folder holds, nothing may be copied.
             build = game_build(self.paths["game_dir"])
             if not build["build"]:
-                info.update(status=self.t("status.build_unknown"), tag="old", muted=True)
+                info.update(status=self.t("status.build_unknown"), tag="old", muted=True,
+                            files_note=self.t("detail.patch_start_game"))
                 return info
             if not build["trusted"]:
-                info.update(status=self.t("status.build_unverified"), tag="old", muted=True)
+                info.update(status=self.t("status.build_unverified"), tag="old", muted=True,
+                            files_note=self.t("detail.patch_start_game"))
                 return info
             if not class_patch_folder(mod, ws, build["build"]):
                 info.update(status=self.t("status.no_patch_build", build["build"]),
-                            tag="old", muted=True)
+                            tag="old", muted=True,
+                            files_note=self.t("detail.patch_wait"))
                 return info
         if self._is_obsolete(mod):
             info.update(status=self.t("status.deprecated"), tag="old")
@@ -1472,7 +1477,12 @@ class PZUpdaterApp:
                     bits.append(self.t("detail.build", build))
             if self._is_obsolete(m):
                 bits.append(self.t("detail.fix_obsolete"))
-            bits.append(self._files_note(info) if ws else self.t("status.no_subscription"))
+            if info["files_note"]:
+                bits.append(info["files_note"])
+            elif ws:
+                bits.append(self._files_note(info))
+            else:
+                bits.append(self.t("status.no_subscription"))
 
             card = self._cards[key]
             if card["name"].cget("text") != info["name"]:

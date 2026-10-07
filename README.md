@@ -85,11 +85,10 @@ the game folder, so it never pulls something into the game you did not ask for.
 
 Two things are worth knowing about the mods that need hand work:
 
-- **Compiled patches are tied to a game build.** Tempo's three `.class` files are
-  built for one build each, so the app copies the folder named after the build the
-  game reports, and refuses to install when it cannot read that build or check it
-  against the game folder. After a game update, start the game once before
-  installing them again.
+- **Tempo's three files are made for one game version each.** The app copies the
+  ones matching the version your game reports, and leaves everything alone when it
+  cannot check that. After a game update, start the game once before installing
+  them again.
 - **What the app installed, it can take back.** A mod whose install the app
   recorded has an **Uninstall** button that deletes exactly those files, and only
   while they still have the bytes the app wrote. Anything else in the game folder
