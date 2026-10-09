@@ -493,6 +493,47 @@ class TestOffersSwitch(unittest.TestCase):
         self.assertFalse(pz.offers_switch(self.BETA, None))
 
 
+class TestDeprecatedRow(unittest.TestCase):
+    """Przestarzały wpis (np. fix przy zainstalowanej becie) ma wyszarzony tytuł."""
+
+    class App:
+        """Tyle aplikacji, ile trzeba, żeby zbudować stan wiersza bez okna."""
+
+        def __init__(self, obsolete):
+            self.obsolete = obsolete
+            self.paths = {"workshop": {"zombiebuddy_fix": "ws"}}
+            self.steam_info = {}
+
+        def t(self, key, *args):
+            return key
+
+        def _mod_name(self, mod):
+            return mod["name"]
+
+        def _install_state(self, mod):
+            return (pz.INSTALL_OK, True, 1)
+
+        def _installed_build(self, mod, mods=None):
+            return None
+
+        def _saved_ts(self, workshop_id):
+            return 0
+
+        def _is_obsolete(self, mod):
+            return self.obsolete
+
+    FIX = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+
+    def test_an_obsolete_row_comes_out_muted(self):
+        info = pz.PZUpdaterApp._status_info(self.App(True), self.FIX)
+        self.assertEqual(info["tag"], "old")
+        self.assertTrue(info["muted"])
+
+    def test_a_row_left_alone_is_not_muted(self):
+        info = pz.PZUpdaterApp._status_info(self.App(False), self.FIX)
+        self.assertFalse(info["muted"])
+
+
 class TestRegistryRelations(unittest.TestCase):
     """Pola wiążące wpisy muszą wskazywać na istniejące mody i nie na siebie."""
 

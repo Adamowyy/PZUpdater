@@ -1365,7 +1365,7 @@ class PZUpdaterApp:
                             files_note=self.t("detail.patch_wait"))
                 return info
         if self._is_obsolete(mod):
-            info.update(status=self.t("status.deprecated"), tag="old")
+            info.update(status=self.t("status.deprecated"), tag="old", muted=True)
             return info
 
         # One loader per game folder: the other entries offer the switch instead.
