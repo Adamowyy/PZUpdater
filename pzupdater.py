@@ -774,6 +774,18 @@ def offers_switch(mod, installed):
     return True
 
 
+def clashing_build(mod, mods, workshop_map):
+    """The other build of this pair that sits in the workshop next to this one."""
+    if mod.get("layer"):
+        return None
+    for other in build_family(mod, mods):
+        if other is mod or other.get("layer"):
+            continue
+        if workshop_map.get(other["key"]):
+            return other
+    return None
+
+
 def accepted_sources(mods, workshop_map):
     """{target path: [(position of the mod, source), ...]}."""
     out = {}
@@ -1944,12 +1956,17 @@ class PZUpdaterApp:
                 self._show_toast(self.t("msg.some_failed", len(failed)))
             self.set_status("   |   ".join(lines))
             notices = notices_to_show(mods, result, actions, self.state["notices"])
+            clashing = self._clashing_builds(mods, result)
             for notice in notices:
                 self.state["notices"][notice] = True
-            if notices:
+            for notice, _other in clashing:
+                self.state["notices"][notice] = True
+            if notices or clashing:
                 save_state(self.state)   # never raise the same notice twice
                 for notice in notices:
                     self._show_notice(notice)
+                for _notice, other in clashing:
+                    self._show_unsubscribe_notice(other)
 
         self._run_async(work, on_done)
 
@@ -2118,11 +2135,26 @@ class PZUpdaterApp:
             self._toast = None
 
     # -- one-time notices -----------------------------------------------------
-    def _show_notice(self, name):
-        """A step the app cannot do for the user, shown once after a first install."""
+    def _clashing_builds(self, mods, results):
+        """[(notice name, the build to unsubscribe from)] - once per build."""
+        visible = self._visible_mods()
+        out = []
+        for mod, (_name, ok, _msg) in zip(mods, results):
+            other = clashing_build(mod, visible, self.paths["workshop"]) if ok else None
+            if other is None:
+                continue
+            notice = f"unsub_{other['key']}"
+            if self.state["notices"].get(notice):
+                continue
+            if not any(name == notice for name, _ in out):
+                out.append((notice, other))
+        return out
+
+    def _notice_shell(self, title, body=None, window_title=None, width=580, height=340):
+        """Window and heading shared by the notices; returns (dialog, button row)."""
         dlg = ctk.CTkToplevel(self.root)
-        dlg.title(self.t(f"notice.{name}.title"))
-        dlg.geometry("560x330")
+        dlg.title(window_title or title)
+        dlg.geometry(f"{width}x{height}")
         dlg.configure(fg_color=CARD)
         dlg.transient(self.root)
         dlg.grab_set()
@@ -2130,31 +2162,37 @@ class PZUpdaterApp:
         dlg.after(200, dlg.lift)          # Tk can open a dialog behind the main window
         self.root.eval(f"tk::PlaceWindow {dlg._w} center")
 
-        ctk.CTkLabel(dlg, text=self.t(f"notice.{name}.title"), font=self.f_mod,
-                     text_color=TEXT, justify="left", anchor="w",
-                     wraplength=510).pack(fill="x", padx=18, pady=(18, 8))
-        ctk.CTkLabel(dlg, text=self.t(f"notice.{name}.body"), font=self.f_small,
-                     text_color=TEXT, justify="left", anchor="w",
-                     wraplength=510).pack(fill="x", padx=18)
+        wrap = width - 52
+        ctk.CTkLabel(dlg, text=title, font=self.f_mod, text_color=TEXT, justify="left",
+                     anchor="w", wraplength=wrap).pack(fill="x", padx=18, pady=(18, 8))
+        if body:
+            ctk.CTkLabel(dlg, text=body, font=self.f_small, text_color=TEXT,
+                         justify="left", anchor="w",
+                         wraplength=wrap).pack(fill="x", padx=18)
 
+        btns = ctk.CTkFrame(dlg, fg_color="transparent")
+        btns.pack(fill="x", padx=18, pady=16, side="bottom")
+        ctk.CTkButton(btns, text=self.t("btn.close"), width=110, height=34,
+                      fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=ON_ACCENT,
+                      corner_radius=8, font=self.f_muted,
+                      command=dlg.destroy).pack(side="right")
+        return dlg, btns
+
+    def _show_notice(self, name):
+        """A step the app cannot do for the user, shown once after a first install."""
         value = self.t(f"notice.{name}.value")
+        dlg, btns = self._notice_shell(self.t(f"notice.{name}.title"),
+                                      self.t(f"notice.{name}.body"))
         entry = ctk.CTkEntry(dlg, font=ctk.CTkFont(family="Consolas", size=14),
                              height=38, justify="center")
         entry.insert(0, value)
         entry.configure(state="readonly")
         entry.pack(fill="x", padx=18, pady=(16, 0))
 
-        btns = ctk.CTkFrame(dlg, fg_color="transparent")
-        btns.pack(fill="x", padx=18, pady=16)
-
         copy_btn = ctk.CTkButton(btns, text=self.t("btn.copy"), width=110, height=34,
                                  fg_color=CARD_SEL, hover_color=BORDER, text_color=TEXT,
                                  corner_radius=8, font=self.f_muted)
         copy_btn.pack(side="left")
-        ctk.CTkButton(btns, text=self.t("btn.close"), width=110, height=34,
-                      fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=ON_ACCENT,
-                      corner_radius=8, font=self.f_muted,
-                      command=dlg.destroy).pack(side="right")
 
         def copy_value():
             self.root.clipboard_clear()
@@ -2164,6 +2202,17 @@ class PZUpdaterApp:
         copy_btn.configure(command=copy_value)
         entry.focus_set()
         entry.select_range(0, "end")      # so Ctrl+C works without dragging
+
+    def _show_unsubscribe_notice(self, other):
+        """One line telling the user to drop the other build, with its workshop page."""
+        dlg, btns = self._notice_shell(self.t("notice.unsub.text", self._mod_name(other)),
+                                      window_title="ZombieBuddy", width=470, height=200)
+        ctk.CTkButton(btns, text=self.t("btn.open_steam"), width=150, height=34,
+                      fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=ON_ACCENT,
+                      corner_radius=8, font=self.f_small,
+                      command=lambda w=other["workshop_id"]:
+                          self._open_url(WORKSHOP_URL.format(w))).pack(side="left")
+        return dlg
 
     def _open_console(self):
         if self._console is not None and self._console.winfo_exists():

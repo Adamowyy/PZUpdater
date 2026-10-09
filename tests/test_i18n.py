@@ -118,6 +118,14 @@ class TestNotices(unittest.TestCase):
                 self.assertTrue(text, msg=f"{language}: {mod['key']}.name_note")
                 self.assertNotEqual(text, key, msg=f"{language}: {mod['key']}.name_note")
 
+    def test_the_unsubscribe_notice_is_translated(self):
+        """Jednolinijkowe powiadomienie o odsubskrybowaniu drugiego wpisu pary."""
+        key = "notice.unsub.text"
+        for language in i18n.LANGUAGES:
+            text = i18n.STRINGS[language].get(key)
+            self.assertTrue(text, msg=f"{language}: {key}")
+            self.assertIn("{}", text, msg=f"{language}: {key} bez nazwy moda")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -493,6 +493,45 @@ class TestOffersSwitch(unittest.TestCase):
         self.assertFalse(pz.offers_switch(self.BETA, None))
 
 
+class TestClashingBuild(unittest.TestCase):
+    """Dwa wpisy z tym samym mod id obok siebie psują multiplayera."""
+
+    RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
+    FIX = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+    BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
+
+    ALL = {"zombiebuddy": "content", "zombiebuddy_beta": "content",
+           "zombiebuddy_fix": "content"}
+
+    def test_the_other_half_of_the_pair_is_reported(self):
+        self.assertIs(pz.clashing_build(self.RELEASE, pz.UPDATABLE_MODS, self.ALL),
+                      self.BETA)
+        self.assertIs(pz.clashing_build(self.BETA, pz.UPDATABLE_MODS, self.ALL),
+                      self.RELEASE)
+
+    def test_nothing_is_reported_when_the_other_one_is_not_subscribed(self):
+        ws = {"zombiebuddy": "content", "zombiebuddy_beta": None,
+              "zombiebuddy_fix": None}
+        self.assertIsNone(pz.clashing_build(self.RELEASE, pz.UPDATABLE_MODS, ws))
+
+    def test_the_extensions_fix_is_never_switched_instead(self):
+        """Fix ma inne id moda, więc nie jest tym, co trzeba odsubskrybować."""
+        ws = {"zombiebuddy": "content", "zombiebuddy_beta": "content",
+              "zombiebuddy_fix": "content"}
+        self.assertIs(pz.clashing_build(self.RELEASE, pz.UPDATABLE_MODS, ws),
+                      self.BETA)
+        self.assertIsNone(pz.clashing_build(self.FIX, pz.UPDATABLE_MODS, ws))
+
+    def test_a_layer_next_to_a_build_is_not_a_clash(self):
+        ws = {"zombiebuddy": "content", "zombiebuddy_beta": None,
+              "zombiebuddy_fix": "content"}
+        self.assertIsNone(pz.clashing_build(self.RELEASE, pz.UPDATABLE_MODS, ws))
+
+    def test_a_mod_without_a_pair_reports_nothing(self):
+        mod = next(m for m in pz.UPDATABLE_MODS if m["key"] == "better_car_physics")
+        self.assertIsNone(pz.clashing_build(mod, pz.UPDATABLE_MODS, self.ALL))
+
+
 class TestDeprecatedRow(unittest.TestCase):
     """Przestarzały wpis (np. fix przy zainstalowanej becie) ma wyszarzony tytuł."""
 

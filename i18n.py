@@ -149,6 +149,10 @@ STRINGS = {
 
         # short remarks shown next to a mod's name (mod entry field "name_note")
         "mod.beta.note": "(optional, recommended)",
+
+        # unsubscribe the other half of the pair
+        "notice.unsub.text":
+            "Two ZombieBuddy detected - unsubscribe from \"{}\" to avoid errors!",
     },
     "pl": {
         # header
@@ -290,6 +294,10 @@ STRINGS = {
 
         # short remarks shown next to a mod's name (mod entry field "name_note")
         "mod.beta.note": "(opcjonalny, zalecany)",
+
+        # unsubscribe the other half of the pair
+        "notice.unsub.text":
+            "Wykryto dwa ZombieBuddy — odsubskrybuj „{}”, żeby uniknąć błędów!",
     },
 }
 
