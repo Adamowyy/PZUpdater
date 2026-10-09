@@ -217,6 +217,11 @@ class TestRealRegistry(TempCase):
         write(os.path.join(self.ws_map["zombiebuddy_fix"], "mods",
                            "ZombieBuddy_Extensions", "42.21", "ZombieBuddy.jar"),
               b"FIX")
+        # zombiebuddy_beta (workshop 3812624292) — ten sam układ plików co wydanie
+        beta = self.ws_map["zombiebuddy_beta"]
+        for fn in ("ZombieBuddy.jar", "zbNative.dll"):
+            write(os.path.join(beta, "mods", "ZombieBuddy", "libs", fn),
+                  b"BETA-" + fn.encode())
         # tempo_patches — paczka klas dla builda 42.21.0
         tempo = os.path.join(self.ws_map["tempo_patches"], "mods", "Tempo_PerfKit",
                              "manual_installation", "42.21.0", "zombie")
@@ -340,6 +345,195 @@ class TestOneTimeNotices(unittest.TestCase):
         used = {m["notice"] for m in pz.UPDATABLE_MODS if m.get("notice")}
         self.assertTrue(used)
         self.assertEqual(used - set(pz.NOTICE_KEYS), set())
+
+
+class TestBetaVisibility(unittest.TestCase):
+    """Wiersz BETA pokazuje się tylko wtedy, gdy beta jest nowsza od wydania."""
+
+    BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
+    RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
+    FIX = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+
+    def hidden(self, beta_version, release_version):
+        versions = {"zombiebuddy_beta": beta_version, "zombiebuddy": release_version}
+        return pz.preview_hidden(self.BETA, lambda m: versions.get(m["key"]))
+
+    def test_a_newer_beta_is_shown(self):
+        self.assertFalse(self.hidden("3.0.0-beta1", "2.3.4"))
+
+    def test_the_release_passing_the_beta_hides_it(self):
+        self.assertTrue(self.hidden("3.0.0-beta1", "3.0.0"))
+
+    def test_a_beta_of_a_higher_release_is_shown(self):
+        self.assertFalse(self.hidden("3.1.0-beta1", "3.0.0"))
+
+    def test_an_older_beta_is_hidden(self):
+        self.assertTrue(self.hidden("2.3.4", "2.4.0"))
+
+    def test_jars_that_cannot_be_read_keep_the_row(self):
+        self.assertFalse(self.hidden(None, None))
+        self.assertFalse(self.hidden("3.0.0-beta1", None))
+
+    def test_a_mod_without_the_field_is_never_hidden(self):
+        self.assertFalse(pz.preview_hidden(self.RELEASE, lambda m: "1.0"))
+
+    def test_the_beta_installs_the_same_files_as_the_release(self):
+        self.assertEqual(self.BETA["type"], self.RELEASE["type"])
+        self.assertEqual(self.BETA["src_dir"], self.RELEASE["src_dir"])
+        self.assertEqual(self.BETA["files"], self.RELEASE["files"])
+
+    def test_the_beta_sits_below_the_release_in_the_registry(self):
+        keys = [m["key"] for m in pz.UPDATABLE_MODS]
+        self.assertLess(keys.index("zombiebuddy"), keys.index("zombiebuddy_beta"))
+
+    def test_the_extensions_fix_gives_way_to_the_beta_when_the_beta_is_in_the_game(self):
+        """Fix nie wgrywa swojego starszego jara na betę, ale tylko gdy beta leży w grze."""
+        self.assertEqual(self.FIX["obsolete_if_newer_than"], "3619862853")
+        self.assertIn("3812624292", self.FIX["obsolete_if_installed"])
+
+    def test_the_beta_carries_the_launch_option_notice(self):
+        self.assertEqual(self.BETA["notice"], "zombiebuddy_launch_options")
+
+    def test_the_beta_declares_the_release_as_its_alternative(self):
+        self.assertEqual(self.BETA["alternative_to"], "3619862853")
+
+    def test_the_beta_carries_a_name_note(self):
+        self.assertEqual(self.BETA["name_note"], "mod.beta.note")
+
+
+class TestAlternativeBuilds(TempCase):
+    """Wydanie, beta i fix wgrywają ten sam jar, więc w grze może być tylko jeden."""
+
+    def setUp(self):
+        super().setUp()
+        self.ws_rel = self.p("ws_rel")
+        self.ws_fix = self.p("ws_fix")
+        self.ws_beta = self.p("ws_beta")
+        for ws, jar in ((self.ws_rel, b"RELEASE-JAR"), (self.ws_beta, b"BETA-JAR")):
+            write(os.path.join(ws, "mods", "ZombieBuddy", "libs", "ZombieBuddy.jar"), jar)
+            write(os.path.join(ws, "mods", "ZombieBuddy", "libs", "zbNative.dll"), b"DLL")
+        write(os.path.join(self.ws_fix, "mods", "ZombieBuddy_Extensions", "42.21",
+                           "ZombieBuddy.jar"), b"FIX-JAR")
+        self.RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
+        self.FIX = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+        self.BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
+        self.ws_map = {"zombiebuddy": self.ws_rel, "zombiebuddy_fix": self.ws_fix,
+                       "zombiebuddy_beta": self.ws_beta}
+
+    def game_with_jar(self, content):
+        write(os.path.join(self.game, "ZombieBuddy.jar"), content)
+        write(os.path.join(self.game, "zbNative.dll"), b"DLL")
+
+    def test_the_whole_family_is_found_from_any_member(self):
+        expected = ["zombiebuddy", "zombiebuddy_fix", "zombiebuddy_beta"]
+        for mod in (self.RELEASE, self.FIX, self.BETA):
+            self.assertEqual([m["key"] for m in pz.build_family(mod)], expected,
+                             msg=mod["key"])
+
+    def test_a_mod_without_an_alternative_is_its_own_family(self):
+        mod = next(m for m in pz.UPDATABLE_MODS if m["key"] == "better_car_physics")
+        self.assertEqual(pz.build_family(mod), [mod])
+
+    def test_each_jar_in_the_game_names_its_own_entry(self):
+        for content, expected in ((b"RELEASE-JAR", self.RELEASE),
+                                  (b"FIX-JAR", self.FIX),
+                                  (b"BETA-JAR", self.BETA)):
+            self.game_with_jar(content)
+            for mod in (self.RELEASE, self.FIX, self.BETA):
+                self.assertIs(pz.installed_build(mod, self.game, self.ws_map), expected)
+
+    def test_an_unknown_jar_belongs_to_nobody(self):
+        self.game_with_jar(b"SOME-OLDER-BUILD")
+        self.assertIsNone(pz.installed_build(self.RELEASE, self.game, self.ws_map))
+
+    def test_nothing_in_the_game_folder_is_nobody(self):
+        self.assertIsNone(pz.installed_build(self.RELEASE, self.game, self.ws_map))
+
+    def test_no_game_folder_means_no_answer(self):
+        self.assertIsNone(pz.installed_build(self.RELEASE, None, self.ws_map))
+
+    def test_a_hidden_beta_leaves_the_release_to_install_normally(self):
+        """Beta ukryta = nie ma z czym porównywać, wydanie pokazuje Zainstaluj."""
+        self.game_with_jar(b"BETA-JAR")
+        self.assertIsNone(pz.installed_build(self.RELEASE, self.game, self.ws_map,
+                                            [self.RELEASE]))
+
+
+class TestOffersSwitch(unittest.TestCase):
+    """Kto dostaje przycisk „Zmień na…", a kto zwykłe Zainstaluj."""
+
+    RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
+    FIX = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+    BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
+
+    def test_a_build_that_is_not_in_the_game_offers_the_switch(self):
+        self.assertTrue(pz.offers_switch(self.RELEASE, self.BETA))
+        self.assertTrue(pz.offers_switch(self.BETA, self.RELEASE))
+
+    def test_the_build_that_is_in_the_game_offers_nothing(self):
+        self.assertFalse(pz.offers_switch(self.RELEASE, self.RELEASE))
+        self.assertFalse(pz.offers_switch(self.BETA, self.BETA))
+
+    def test_the_extensions_fix_is_installed_not_switched_to(self):
+        """Fix dokłada się do loadera, więc ma zwykłe Zainstaluj, nie „Zmień na…"."""
+        self.assertTrue(self.FIX.get("layer"))
+        self.assertFalse(pz.offers_switch(self.FIX, self.RELEASE))
+        self.assertFalse(pz.offers_switch(self.FIX, self.BETA))
+
+    def test_the_fix_counts_as_the_loader_it_patches(self):
+        """Wgrany fix to ten sam loader z łatką — wydanie nie ma przy nim krzyczeć."""
+        self.assertFalse(pz.offers_switch(self.RELEASE, self.FIX))
+
+    def test_the_beta_is_still_offered_next_to_the_fix(self):
+        """Beta to osobna wersja, więc obok fixa nadal proponuje się sama."""
+        self.assertTrue(pz.offers_switch(self.BETA, self.FIX))
+
+    def test_nothing_installed_offers_no_switch(self):
+        self.assertFalse(pz.offers_switch(self.RELEASE, None))
+        self.assertFalse(pz.offers_switch(self.BETA, None))
+
+
+class TestRegistryRelations(unittest.TestCase):
+    """Pola wiążące wpisy muszą wskazywać na istniejące mody i nie na siebie."""
+
+    def ids(self):
+        return {m["workshop_id"] for m in pz.UPDATABLE_MODS}
+
+    def targets(self, mod, field):
+        value = mod.get(field) or []
+        return [value] if isinstance(value, str) else list(value)
+
+    def test_every_relation_points_at_a_registered_entry(self):
+        for mod in pz.UPDATABLE_MODS:
+            for field in ("visible_if_newer_than", "alternative_to",
+                          "obsolete_if_newer_than", "obsolete_if_installed"):
+                for target in self.targets(mod, field):
+                    self.assertIn(target, self.ids(), msg=f"{mod['key']}.{field}")
+
+    def test_relations_never_point_at_their_own_entry(self):
+        for mod in pz.UPDATABLE_MODS:
+            for field in ("visible_if_newer_than", "alternative_to"):
+                target = mod.get(field)
+                if target:
+                    self.assertNotEqual(target, mod["workshop_id"], msg=mod["key"])
+
+
+class TestReleaseKey(unittest.TestCase):
+    def test_a_prerelease_sorts_below_its_own_release(self):
+        self.assertLess(pz.release_key("3.0.0-beta1"), pz.release_key("3.0.0"))
+        self.assertLess(pz.release_key("1.2.0-rc2"), pz.release_key("1.2.0"))
+
+    def test_a_prerelease_of_a_higher_number_still_wins(self):
+        self.assertTrue(pz.newer_version("3.0.0-beta1", "2.3.4"))
+        # ...ale samo wydanie jest nowsze od swojej bety
+        self.assertTrue(pz.newer_version("3.0.0", "3.0.0-beta1"))
+
+    def test_a_later_prerelease_beats_an_earlier_one(self):
+        self.assertLess(pz.release_key("3.0.0-beta1"), pz.release_key("3.0.0-beta2"))
+
+    def test_versions_without_numbers_cannot_be_compared(self):
+        self.assertIsNone(pz.newer_version("", "2.3.4"))
+        self.assertIsNone(pz.newer_version("2.3.4", None))
 
 
 if __name__ == "__main__":

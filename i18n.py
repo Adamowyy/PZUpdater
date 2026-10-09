@@ -36,6 +36,7 @@ STRINGS = {
         "btn.clear": "Clear",
         "btn.close": "Close",
         "btn.copy": "Copy",
+        "btn.switch_to": "Switch to {}",
 
         # status badges
         "status.not_subscribed": "Not subscribed",
@@ -44,6 +45,7 @@ STRINGS = {
         "status.needs_update": "Update available",
         "status.new_update": "New update",
         "status.up_to_date": "Up to date",
+        "status.other_build": "In game: {}",
         "status.pending": "…",
         "status.subscribed": "✓ subscribed",
         "status.no_subscription": "not subscribed",
@@ -56,6 +58,8 @@ STRINGS = {
         "detail.steam": "Steam: {}",
         "detail.version": "version {}",
         "detail.fix_obsolete": "newer ZombieBuddy already replaces the Extensions jar",
+        "detail.beta_offered": "newer BETA",
+        "detail.newer_than_beta": "newer than the BETA",
         "detail.files_ok": "✓ in game ({})",
         "detail.files_missing": "✗ mod files not in the game folder",
         "detail.files_partial": "⚠ {} of {} files match",
@@ -142,6 +146,9 @@ STRINGS = {
             "Options, and paste the line below. The two dashes at the end belong to "
             "it, keep them.",
         "notice.zombiebuddy_launch_options.value": "-agentlib:zbNative --",
+
+        # short remarks shown next to a mod's name (mod entry field "name_note")
+        "mod.beta.note": "(optional, recommended)",
     },
     "pl": {
         # header
@@ -170,6 +177,7 @@ STRINGS = {
         "btn.clear": "Wyczyść",
         "btn.close": "Zamknij",
         "btn.copy": "Kopiuj",
+        "btn.switch_to": "Zmień na {}",
 
         # status badges
         "status.not_subscribed": "Brak subskrypcji",
@@ -178,6 +186,7 @@ STRINGS = {
         "status.needs_update": "Do aktualizacji",
         "status.new_update": "Nowa aktualizacja",
         "status.up_to_date": "Aktualny",
+        "status.other_build": "W grze: {}",
         "status.pending": "…",
         "status.subscribed": "✓ subskrybowany",
         "status.no_subscription": "brak subskrypcji",
@@ -190,6 +199,8 @@ STRINGS = {
         "detail.steam": "Steam: {}",
         "detail.version": "wersja {}",
         "detail.fix_obsolete": "nowszy ZombieBuddy już zastępuje jar Extensions",
+        "detail.beta_offered": "nowsza BETA",
+        "detail.newer_than_beta": "nowsza niż BETA",
         "detail.files_ok": "✓ w grze ({})",
         "detail.files_missing": "✗ brak plików moda w grze",
         "detail.files_partial": "⚠ w grze {} z {} plików zgodnych",
@@ -276,6 +287,9 @@ STRINGS = {
             "Właściwości, potem Opcje uruchamiania i wklej poniższą linię. Dwie "
             "kreski na końcu są jej częścią, nie usuwaj ich.",
         "notice.zombiebuddy_launch_options.value": "-agentlib:zbNative --",
+
+        # short remarks shown next to a mod's name (mod entry field "name_note")
+        "mod.beta.note": "(opcjonalny, zalecany)",
     },
 }
 

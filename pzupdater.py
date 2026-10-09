@@ -69,9 +69,12 @@ UPDATABLE_MODS = [
         "jar_name": "ZombieBuddy.jar",
         "search_under": "mods",
         "target_rel": "ZombieBuddy.jar",
-        # Once ZombieBuddy ships a release newer than the one this jar is built
-        # on, the official updater replaces it anyway and this entry is pointless.
+        # Obsolete once ZombieBuddy ships past it; the beta alone does not count
         "obsolete_if_newer_than": "3619862853",
+        "obsolete_if_installed": ["3812624292"],
+        # a patch laid over the loader, not a build anyone chooses between
+        "layer": True,
+        "alternative_to": "3619862853",
         "help": {
             "en": "Replaces ZombieBuddy.jar in the game folder with the jar from "
                   "ZombieBuddy Extensions (the 42.21 temporary fix under its new "
@@ -81,6 +84,26 @@ UPDATABLE_MODS = [
                   "Extensions (dawny Temporary Fix dla 42.21). Przestaje się "
                   "nakładać, gdy ZombieBuddy wyprzedzi wersję, na której zbudowany "
                   "jest ten jar.",
+        },
+    },
+    {
+        "key": "zombiebuddy_beta",
+        "name": "ZombieBuddy BETA",
+        "workshop_id": "3812624292",
+        "type": "files_copy",
+        "src_dir": os.path.join("mods", "ZombieBuddy", "libs"),
+        "files": ["ZombieBuddy.jar", "zbNative.dll"],
+        "notice": "zombiebuddy_launch_options",
+        "visible_if_newer_than": "3619862853",
+        "alternative_to": "3619862853",
+        "name_note": "mod.beta.note",
+        "help": {
+            "en": "Beta of the next ZombieBuddy release. It installs the same two "
+                  "files and replaces the release build, so the two can never be "
+                  "active at the same time.",
+            "pl": "Beta następnego wydania ZombieBuddy. Wgrywa te same dwa pliki i "
+                  "zastępuje wersję z wydania, więc obie nigdy nie działają "
+                  "jednocześnie.",
         },
     },
     {
@@ -277,6 +300,19 @@ def version_key(name):
     return [int(x) for x in re.findall(r"\d+", name)]
 
 
+# alpha, beta, rc... - anything an author puts in front of a release number
+PRERELEASE = re.compile(r"(alpha|beta|rc|pre|snapshot|dev)[-_.]?", re.IGNORECASE)
+
+
+def release_key(name):
+    """Comparable key that keeps a pre-release below its own release."""
+    text = name or ""
+    found = PRERELEASE.search(text)
+    if found:
+        return (version_key(text[:found.start()]), 0, version_key(text[found.end():]))
+    return (version_key(text), 1, [])
+
+
 def newest_version_folder(directory):
     """Newest folder inside a "manual_installation" style directory."""
     best = None
@@ -330,6 +366,14 @@ def superseded_by_version(own_version, other_version):
     if not own or not other:
         return None
     return other > own
+
+
+def newer_version(candidate, other):
+    """True when `candidate` is a newer version than `other`."""
+    cand, ref = release_key(candidate), release_key(other)
+    if not cand[0] or not ref[0]:
+        return None
+    return cand > ref
 
 
 # State: applied timestamps, watched mods, language
@@ -464,6 +508,17 @@ ACTION_HANDLERS = {
 # One-time notices
 
 NOTICE_KEYS = ("zombiebuddy_launch_options",)
+
+
+def preview_hidden(mod, version_of):
+    """True when a preview entry has nothing left to show."""
+    ref_id = mod.get("visible_if_newer_than")
+    if not ref_id:
+        return False
+    ref = next((m for m in UPDATABLE_MODS if m["workshop_id"] == ref_id), None)
+    if ref is None:
+        return False
+    return newer_version(version_of(mod), version_of(ref)) is False
 
 
 def notices_to_show(mods, results, actions, shown):
@@ -690,6 +745,35 @@ def mod_targets(mod, ws, game=None):
     return []
 
 
+def build_family(mod, mods=None):
+    """Every entry that installs the same files as this one, itself included."""
+    mods = list(mods) if mods is not None else list(UPDATABLE_MODS)
+    root_id = mod.get("alternative_to") or mod["workshop_id"]
+    return [m for m in mods
+            if m["workshop_id"] == root_id or m.get("alternative_to") == root_id]
+
+
+def installed_build(mod, game, workshop_map, mods=None):
+    """The entry of this mod's family whose jar is in the game folder."""
+    if not game:
+        return None
+    for candidate in build_family(mod, mods):
+        for rel, kind, src in mod_targets(candidate, workshop_map.get(candidate["key"]), game):
+            if (kind == "file" and src and rel.lower().endswith(".jar")
+                    and files_identical(src, os.path.join(game, rel))):
+                return candidate
+    return None
+
+
+def offers_switch(mod, installed):
+    """True when this row should offer to swap the game onto its own build."""
+    if installed is None or installed is mod or mod.get("layer"):
+        return False
+    if installed.get("layer"):
+        return mod["workshop_id"] != installed.get("alternative_to")
+    return True
+
+
 def accepted_sources(mods, workshop_map):
     """{target path: [(position of the mod, source), ...]}."""
     out = {}
@@ -747,6 +831,7 @@ ACCENT = "#3b82f6"
 ACCENT_HOVER = "#2563eb"
 ON_ACCENT = "#ffffff"
 DANGER = "#dc2626"      # the uninstall button: the only action that deletes
+ALERT = "#f87171"       # a detail line that has to be read: which build is ahead
 
 DISABLED_BG = "#3a3d42"
 DISABLED_TEXT = "#6b7280"
@@ -837,7 +922,7 @@ class PZUpdaterApp:
         self._refresh_sources()
 
     def _refresh_sources(self):
-        self._sources = accepted_sources(UPDATABLE_MODS, self.paths["workshop"])
+        self._sources = accepted_sources(self._visible_mods(), self.paths["workshop"])
 
     def _saved_ts(self, workshop_id):
         return self.state.get("mods", {}).get(workshop_id, {}).get("steam_time_updated", 0)
@@ -911,8 +996,8 @@ class PZUpdaterApp:
     # -- UI -------------------------------------------------------------------
     def _build_ui(self):
         self.root.title(f"{APP_NAME} — Project Zomboid")
-        self.root.geometry("1080x640")
-        self.root.minsize(960, 540)
+        self.root.geometry("1240x730")
+        self.root.minsize(1000, 600)
         self.root.configure(fg_color=BG)
 
         icon = resource_path("icon.ico")
@@ -1074,7 +1159,7 @@ class PZUpdaterApp:
 
     def _populate(self):
         self._left_order = []
-        for m in UPDATABLE_MODS:
+        for m in self._visible_mods():
             card = ctk.CTkFrame(self.scroll, fg_color=CARD, corner_radius=12,
                                 border_width=1, border_color=BORDER)
             card.pack(fill="x", pady=3)
@@ -1088,8 +1173,9 @@ class PZUpdaterApp:
                                  corner_radius=8, height=22)
             badge.grid(row=0, column=1, sticky="e", padx=12, pady=(8, 0))
 
-            sub = ctk.CTkLabel(card, text="", font=self.f_muted, text_color=MUTED,
-                               anchor="w")
+            # A frame rather than one label: the hint about which build is ahead
+            # has to stand out, and a label is painted in a single colour.
+            sub = ctk.CTkFrame(card, fg_color="transparent")
             sub.grid(row=1, column=0, sticky="w", padx=12, pady=(2, 8))
 
             foot = ctk.CTkFrame(card, fg_color="transparent")
@@ -1124,7 +1210,8 @@ class PZUpdaterApp:
             card.grid_columnconfigure(0, weight=1)
 
             self._cards[m["key"]] = {"frame": card, "name": name, "badge": badge,
-                                     "sub": sub, "action": act, "remove": rem}
+                                     "sub": sub, "action": act, "remove": rem,
+                                     "bits": None}
             for w in (card, name, badge, sub):
                 self._bind_click(w, m["key"])
 
@@ -1196,6 +1283,25 @@ class PZUpdaterApp:
     def _bind_click(self, widget, key):
         widget.bind("<Button-1>", lambda e: self._select(key))
 
+    def _fill_bits(self, key, card, bits):
+        """One label per detail, so the hint about the builds can carry a colour."""
+        if card.get("bits") == bits:
+            return
+        frame = card["sub"]
+        for child in frame.winfo_children():
+            child.destroy()
+        for index, (text, colour) in enumerate(bits):
+            if index:
+                separator = ctk.CTkLabel(frame, text="·", font=self.f_muted,
+                                         text_color=SUBTLE, anchor="w")
+                separator.pack(side="left", padx=6)
+                self._bind_click(separator, key)
+            label = ctk.CTkLabel(frame, text=text, font=self.f_muted,
+                                 text_color=colour, anchor="w")
+            label.pack(side="left")
+            self._bind_click(label, key)
+        card["bits"] = bits
+
     # -- mod state ------------------------------------------------------------
     def _installed_files(self, mod):
         """Files the last install wrote for this mod, as recorded in the state."""
@@ -1204,7 +1310,12 @@ class PZUpdaterApp:
 
     def _install_state(self, mod):
         return mod_install_state(mod, self.paths["game_dir"], self.paths["workshop"],
-                                 UPDATABLE_MODS, self._sources)
+                                 self._visible_mods(), self._sources)
+
+    def _installed_build(self, mod):
+        """The half of an either/or pair whose jar is in the game folder."""
+        return installed_build(mod, self.paths.get("game_dir"),
+                               self.paths.get("workshop") or {}, self._visible_mods())
 
     def _files_note(self, info):
         state, ok, total = info["install"], info["ok"], info["total"]
@@ -1221,13 +1332,18 @@ class PZUpdaterApp:
         details = self.steam_info.get(mod["workshop_id"]) or {}
         return (details.get("title") or "").strip() or mod["name"]
 
+    def _display_name(self, mod):
+        """Name for the card: the workshop title plus the remark a mod carries."""
+        note = self.t(mod["name_note"]) if mod.get("name_note") else ""
+        return f"{self._mod_name(mod)} {note}".strip() if note else self._mod_name(mod)
+
     def _status_info(self, mod):
         """Badge text, file state and the action available for one mod."""
         ws = self.paths["workshop"].get(mod["key"])
         install, ok, total = self._install_state(mod)
         info = {"install": install, "ok": ok, "total": total, "pending": None,
                 "muted": False, "status": "", "tag": "", "files_note": None,
-                "name": self._mod_name(mod)}
+                "switch": False, "switch_name": "", "name": self._mod_name(mod)}
         if not ws:
             info.update(status=self.t("status.not_subscribed"), tag="gray", muted=True)
             return info
@@ -1250,6 +1366,13 @@ class PZUpdaterApp:
                 return info
         if self._is_obsolete(mod):
             info.update(status=self.t("status.deprecated"), tag="old")
+            return info
+
+        # One loader per game folder: the other entries offer the switch instead.
+        installed = self._installed_build(mod)
+        if offers_switch(mod, installed):
+            info.update(status=self.t("status.other_build", installed["name"]), tag="info",
+                        pending="install", switch=True, switch_name=mod["name"])
             return info
 
         details = self.steam_info.get(mod["workshop_id"])
@@ -1276,19 +1399,26 @@ class PZUpdaterApp:
     def _pending_actions(self):
         """{mod key: "install"|"update"} - what can be done with each mod."""
         pending = {}
-        for m in UPDATABLE_MODS:
-            action = self._status_info(m)["pending"]
-            if action:
-                pending[m["key"]] = action
+        for m in self._visible_mods():
+            info = self._status_info(m)
+            # A switch has its own button: the main one must never turn the user
+            # over to the other build on its own.
+            if info["pending"] and not info["switch"]:
+                pending[m["key"]] = info["pending"]
         return pending
 
     def _installed_for_update(self):
         """Mods the main Update button may touch."""
         out = []
-        for m in UPDATABLE_MODS:
+        visible = self._visible_mods()
+        for m in visible:
             info = self._status_info(m)
-            if info["pending"] and info["install"] in (INSTALL_OK, INSTALL_PARTIAL):
-                out.append(m)
+            if not (info["pending"] and not info["switch"]
+                    and info["install"] in (INSTALL_OK, INSTALL_PARTIAL)):
+                continue
+            if len(build_family(m, visible)) > 1 and self._installed_build(m) is not m:
+                continue
+            out.append(m)
         return out
 
     def _refresh_buttons(self):
@@ -1337,7 +1467,7 @@ class PZUpdaterApp:
             c["frame"].configure(border_color=ACCENT if sel else BORDER,
                                  border_width=2 if sel else 1,
                                  fg_color=CARD_SEL if sel else CARD)
-        self.info_name.configure(text=self._mod_name(mod))
+        self.info_name.configure(text=self._display_name(mod))
         self.info_help.configure(text=self.t.help_text(mod.get("help")))
 
     def set_status(self, text):
@@ -1438,18 +1568,46 @@ class PZUpdaterApp:
 
     def _is_obsolete(self, mod):
         """True when another mod makes this one pointless."""
-        ref_id = mod.get("obsolete_if_newer_than")
-        if not ref_id:
+        # A mod can also be pointless because the build it replaces is the one in
+        # the game folder, whatever the versions say.
+        for other_id in mod.get("obsolete_if_installed") or []:
+            other = self._mod_by_workshop_id(other_id)
+            if other is not None and self._installed_build(other) is other:
+                return True
+        refs = mod.get("obsolete_if_newer_than")
+        if not refs:
             return False
-        ref = next((m for m in UPDATABLE_MODS if m["workshop_id"] == ref_id), None)
-        if ref is not None:
-            verdict = superseded_by_version(self._jar_version_of(mod),
-                                            self._jar_version_of(ref))
-            if verdict is not None:
-                return verdict
-        own = self.steam_info.get(mod["workshop_id"], {}).get("time_updated", 0)
-        newer = self.steam_info.get(ref_id, {}).get("time_updated", 0)
-        return own > 0 and newer > 0 and newer > own
+        if isinstance(refs, str):
+            refs = [refs]
+        own_version = self._jar_version_of(mod)
+        own_ts = self.steam_info.get(mod["workshop_id"], {}).get("time_updated", 0)
+        for ref_id in refs:
+            ref = self._mod_by_workshop_id(ref_id)
+            if ref is not None:
+                verdict = superseded_by_version(own_version, self._jar_version_of(ref))
+                if verdict is not None:
+                    if verdict:
+                        return True
+                    continue
+            ref_ts = self.steam_info.get(ref_id, {}).get("time_updated", 0)
+            if own_ts > 0 and ref_ts > own_ts:
+                return True
+        return False
+
+    def _mod_by_workshop_id(self, workshop_id):
+        return next((m for m in UPDATABLE_MODS if m["workshop_id"] == workshop_id), None)
+
+    def _preview_of(self, mod):
+        """The entry that previews the next version of this mod, if one is registered."""
+        return next((m for m in UPDATABLE_MODS
+                     if m.get("visible_if_newer_than") == mod["workshop_id"]), None)
+
+    def _is_hidden(self, mod):
+        """True when a preview entry (the BETA) should be off the list."""
+        return preview_hidden(mod, self._jar_version_of)
+
+    def _visible_mods(self):
+        return [m for m in UPDATABLE_MODS if not self._is_hidden(m)]
 
     def _manual_status(self, m):
         details = self.steam_info.get(m["workshop_id"])
@@ -1476,9 +1634,13 @@ class PZUpdaterApp:
         setattr(self, attr, keys)
 
     def refresh_statuses(self):
+        # The beta row can come and go, so the column is rebuilt when the list changes
+        if set(self._cards) != {m["key"] for m in self._visible_mods()}:
+            self._rebuild_ui()
+            return
         # left column: mods the app updates
         infos = {}
-        for m in UPDATABLE_MODS:
+        for m in self._visible_mods():
             key = m["key"]
             info = self._status_info(m)
             infos[key] = info
@@ -1486,29 +1648,38 @@ class PZUpdaterApp:
             details = self.steam_info.get(m["workshop_id"])
             ws = self.paths["workshop"].get(key)
 
-            bits = [self.t("detail.workshop", m["workshop_id"])]
+            bits = [(self.t("detail.workshop", m["workshop_id"]), MUTED)]
             if details:
-                bits.append(self.t("detail.steam", fmt_ts(details["time_updated"])))
+                bits.append((self.t("detail.steam", fmt_ts(details["time_updated"])), MUTED))
             if m["type"] == "folder_copy" and ws:
                 version_dir = newest_version_folder(os.path.join(ws, m["manual_dir"]))
                 if version_dir and info["install"] != INSTALL_UNKNOWN:
-                    bits.append(self.t("detail.version", os.path.basename(version_dir)))
+                    bits.append((self.t("detail.version", os.path.basename(version_dir)),
+                                 MUTED))
             if m["type"] == "class_patch" and ws:
                 build = game_build(self.paths["game_dir"])["build"]
                 if build:
-                    bits.append(self.t("detail.build", build))
+                    bits.append((self.t("detail.build", build), MUTED))
             if self._is_obsolete(m):
-                bits.append(self.t("detail.fix_obsolete"))
-            if info["files_note"]:
-                bits.append(info["files_note"])
+                bits.append((self.t("detail.fix_obsolete"), MUTED))
+            # Which build is ahead, so a BETA row appearing is never a guess
+            preview = self._preview_of(m)
+            if preview is not None and not info["switch"]:
+                bits.append((self.t("detail.newer_than_beta") if self._is_hidden(preview)
+                             else self.t("detail.beta_offered"), ALERT))
+            if info["switch"]:
+                pass      # the badge already names the build that is in the game
+            elif info["files_note"]:
+                bits.append((info["files_note"], MUTED))
             elif ws:
-                bits.append(self._files_note(info))
+                bits.append((self._files_note(info), MUTED))
             else:
-                bits.append(self.t("status.no_subscription"))
+                bits.append((self.t("status.no_subscription"), MUTED))
 
             card = self._cards[key]
-            if card["name"].cget("text") != info["name"]:
-                card["name"].configure(text=info["name"])
+            display = self._display_name(m)
+            if card["name"].cget("text") != display:
+                card["name"].configure(text=display)
             if info["muted"]:
                 tc, bc = BADGE["gray"]
                 card["name"].configure(text_color=SUBTLE)
@@ -1516,12 +1687,16 @@ class PZUpdaterApp:
                 tc, bc = BADGE.get(tag, BADGE[""])
                 card["name"].configure(text_color=TEXT)
             card["badge"].configure(text=status, text_color=tc, fg_color=bc)
-            card["sub"].configure(text="  ·  ".join(bits))
+            self._fill_bits(key, card, bits)
 
             if info["pending"]:
-                card["action"].configure(
-                    text=self.t("btn.install") if info["install"] == INSTALL_MISSING
-                    else self.t("btn.update"))
+                if info["switch"]:
+                    label = self.t("btn.switch_to", info["switch_name"])
+                elif info["install"] == INSTALL_MISSING:
+                    label = self.t("btn.install")
+                else:
+                    label = self.t("btn.update")
+                card["action"].configure(text=label)
                 card["action"].grid()
             else:
                 card["action"].grid_remove()
@@ -1643,9 +1818,9 @@ class PZUpdaterApp:
             self._hide_overlay_after_min_time()
             self._reveal()
             actions = self._pending_actions()
-            installs = [self._mod_name(m) for m in UPDATABLE_MODS
+            installs = [self._mod_name(m) for m in self._visible_mods()
                         if actions.get(m["key"]) == "install"]
-            updates = [self._mod_name(m) for m in UPDATABLE_MODS
+            updates = [self._mod_name(m) for m in self._visible_mods()
                        if actions.get(m["key"]) == "update"]
             updates += [m["name"] for m in self.manual_mods
                         if self._manual_status(m)[1] == "new"]

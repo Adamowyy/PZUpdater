@@ -107,6 +107,17 @@ class TestNotices(unittest.TestCase):
                 i18n.STRINGS[language]["notice.zombiebuddy_launch_options.value"],
                 "-agentlib:zbNative --")
 
+    def test_every_name_note_a_mod_uses_is_translated(self):
+        """Notka przy nazwie musi być w każdym języku, nie jako surowy klucz."""
+        for mod in pzupdater.UPDATABLE_MODS:
+            key = mod.get("name_note")
+            if not key:
+                continue
+            for language in i18n.LANGUAGES:
+                text = i18n.STRINGS[language].get(key)
+                self.assertTrue(text, msg=f"{language}: {mod['key']}.name_note")
+                self.assertNotEqual(text, key, msg=f"{language}: {mod['key']}.name_note")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

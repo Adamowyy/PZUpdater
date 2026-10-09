@@ -52,6 +52,7 @@ add the ones that can be automated safely.
 | Mod | Workshop ID | What it installs |
 | --- | --- | --- |
 | ZombieBuddy | 3619862853 | `ZombieBuddy.jar` and `zbNative.dll` into the game folder (the Java mod loader) |
+| ZombieBuddy BETA | 3812624292 | the same two files from the beta build. The row appears only while the beta is newer than ZombieBuddy and hides itself once ZombieBuddy passes it |
 | [B42] ZombieBuddy Extensions | 3807686870 | replaces `ZombieBuddy.jar` with the extension build (the 42.21 temporary fix under its new name) |
 | Better Car Physics | 2909035179 | the `zombie` folder from the newest version in `manual_installation` |
 | Tempo - A Performance & FPS Optimizer | 3736629791 | the three compiled `.class` patches, from the `manual_installation` folder named after the game build |
