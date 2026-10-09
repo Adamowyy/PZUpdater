@@ -51,6 +51,8 @@ UPDATABLE_MODS = [
         "type": "files_copy",
         "src_dir": os.path.join("mods", "ZombieBuddy", "libs"),
         "files": ["ZombieBuddy.jar", "zbNative.dll"],
+        # the loader does nothing until the game starts with the agent launch option
+        "notice": "zombiebuddy_launch_options",
         "help": {
             "en": "Copies ZombieBuddy.jar and zbNative.dll into the game folder "
                   "(the Java mod loader).",
@@ -346,6 +348,7 @@ def load_state():
     except (OSError, ValueError):
         state = {}
     state.setdefault("mods", {})
+    state.setdefault("notices", {})
     if "manual_mods" not in state:
         state["manual_mods"] = list(DEFAULT_MANUAL_MODS)
     if state.get("language") not in i18n.LANGUAGES:
@@ -456,6 +459,25 @@ ACTION_HANDLERS = {
     "files_copy": update_files,
     "class_patch": update_class_patch,
 }
+
+
+# One-time notices
+
+NOTICE_KEYS = ("zombiebuddy_launch_options",)
+
+
+def notices_to_show(mods, results, actions, shown):
+    """Notices to raise after an update run."""
+    names = []
+    for mod, (_name, ok, _msg) in zip(mods, results):
+        notice = mod.get("notice")
+        if not ok or notice not in NOTICE_KEYS:
+            continue
+        if actions.get(mod["key"]) != "install" or shown.get(notice):
+            continue
+        if notice not in names:
+            names.append(notice)
+    return names
 
 
 # Is the mod actually in the game folder?
@@ -1746,6 +1768,13 @@ class PZUpdaterApp:
             if failed:
                 self._show_toast(self.t("msg.some_failed", len(failed)))
             self.set_status("   |   ".join(lines))
+            notices = notices_to_show(mods, result, actions, self.state["notices"])
+            for notice in notices:
+                self.state["notices"][notice] = True
+            if notices:
+                save_state(self.state)   # never raise the same notice twice
+                for notice in notices:
+                    self._show_notice(notice)
 
         self._run_async(work, on_done)
 
@@ -1912,6 +1941,54 @@ class PZUpdaterApp:
             except Exception:
                 pass
             self._toast = None
+
+    # -- one-time notices -----------------------------------------------------
+    def _show_notice(self, name):
+        """A step the app cannot do for the user, shown once after a first install."""
+        dlg = ctk.CTkToplevel(self.root)
+        dlg.title(self.t(f"notice.{name}.title"))
+        dlg.geometry("560x330")
+        dlg.configure(fg_color=CARD)
+        dlg.transient(self.root)
+        dlg.grab_set()
+        dlg.resizable(False, False)
+        dlg.after(200, dlg.lift)          # Tk can open a dialog behind the main window
+        self.root.eval(f"tk::PlaceWindow {dlg._w} center")
+
+        ctk.CTkLabel(dlg, text=self.t(f"notice.{name}.title"), font=self.f_mod,
+                     text_color=TEXT, justify="left", anchor="w",
+                     wraplength=510).pack(fill="x", padx=18, pady=(18, 8))
+        ctk.CTkLabel(dlg, text=self.t(f"notice.{name}.body"), font=self.f_small,
+                     text_color=TEXT, justify="left", anchor="w",
+                     wraplength=510).pack(fill="x", padx=18)
+
+        value = self.t(f"notice.{name}.value")
+        entry = ctk.CTkEntry(dlg, font=ctk.CTkFont(family="Consolas", size=14),
+                             height=38, justify="center")
+        entry.insert(0, value)
+        entry.configure(state="readonly")
+        entry.pack(fill="x", padx=18, pady=(16, 0))
+
+        btns = ctk.CTkFrame(dlg, fg_color="transparent")
+        btns.pack(fill="x", padx=18, pady=16)
+
+        copy_btn = ctk.CTkButton(btns, text=self.t("btn.copy"), width=110, height=34,
+                                 fg_color=CARD_SEL, hover_color=BORDER, text_color=TEXT,
+                                 corner_radius=8, font=self.f_muted)
+        copy_btn.pack(side="left")
+        ctk.CTkButton(btns, text=self.t("btn.close"), width=110, height=34,
+                      fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=ON_ACCENT,
+                      corner_radius=8, font=self.f_muted,
+                      command=dlg.destroy).pack(side="right")
+
+        def copy_value():
+            self.root.clipboard_clear()
+            self.root.clipboard_append(value)
+            copy_btn.configure(text=self.t("notice.copied"))
+
+        copy_btn.configure(command=copy_value)
+        entry.focus_set()
+        entry.select_range(0, "end")      # so Ctrl+C works without dragging
 
     def _open_console(self):
         if self._console is not None and self._console.winfo_exists():

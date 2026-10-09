@@ -302,5 +302,45 @@ class TestActionHandlerSignatures(unittest.TestCase):
                 self.assertIs(prev.default, None, msg=mod_type)
 
 
+class TestOneTimeNotices(unittest.TestCase):
+    """Powiadomienie pokazuje się tylko po pierwszej instalacji i tylko raz."""
+
+    MOD = {"key": "zombiebuddy", "notice": "zombiebuddy_launch_options"}
+    OK = [("ZombieBuddy", True, "copied")]
+    FAIL = [("ZombieBuddy", False, "boom")]
+
+    def test_a_first_install_raises_it(self):
+        names = pz.notices_to_show([self.MOD], self.OK, {"zombiebuddy": "install"}, {})
+        self.assertEqual(names, ["zombiebuddy_launch_options"])
+
+    def test_an_update_stays_quiet(self):
+        names = pz.notices_to_show([self.MOD], self.OK, {"zombiebuddy": "update"}, {})
+        self.assertEqual(names, [])
+
+    def test_a_failed_install_stays_quiet(self):
+        names = pz.notices_to_show([self.MOD], self.FAIL, {"zombiebuddy": "install"}, {})
+        self.assertEqual(names, [])
+
+    def test_an_already_shown_notice_is_not_repeated(self):
+        shown = {"zombiebuddy_launch_options": True}
+        names = pz.notices_to_show([self.MOD], self.OK, {"zombiebuddy": "install"}, shown)
+        self.assertEqual(names, [])
+
+    def test_a_mod_without_a_notice_raises_nothing(self):
+        mod = {"key": "better_car_physics"}
+        names = pz.notices_to_show([mod], [("Better Car Physics", True, "copied")],
+                                   {"better_car_physics": "install"}, {})
+        self.assertEqual(names, [])
+
+    def test_zombiebuddy_carries_the_launch_option_notice(self):
+        mod = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
+        self.assertEqual(mod["notice"], "zombiebuddy_launch_options")
+
+    def test_every_notice_a_mod_uses_is_known(self):
+        used = {m["notice"] for m in pz.UPDATABLE_MODS if m.get("notice")}
+        self.assertTrue(used)
+        self.assertEqual(used - set(pz.NOTICE_KEYS), set())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

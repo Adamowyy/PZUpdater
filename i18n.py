@@ -35,6 +35,7 @@ STRINGS = {
         "btn.add": "Add",
         "btn.clear": "Clear",
         "btn.close": "Close",
+        "btn.copy": "Copy",
 
         # status badges
         "status.not_subscribed": "Not subscribed",
@@ -130,6 +131,17 @@ STRINGS = {
         "console.title": "Log — PZ Updater",
         "console.heading": "Errors and events",
         "console.empty": "(no entries)",
+
+        # one-time notices (see pzupdater.NOTICE_KEYS)
+        "notice.copied": "Copied",
+        "notice.zombiebuddy_launch_options.title": "One more step for ZombieBuddy",
+        "notice.zombiebuddy_launch_options.body":
+            "The files are in the game folder, but the game ignores them until this "
+            "launch option is set.\n\n"
+            "In Steam: right-click Project Zomboid, choose Properties, then Launch "
+            "Options, and paste the line below. The two dashes at the end belong to "
+            "it, keep them.",
+        "notice.zombiebuddy_launch_options.value": "-agentlib:zbNative --",
     },
     "pl": {
         # header
@@ -157,6 +169,7 @@ STRINGS = {
         "btn.add": "Dodaj",
         "btn.clear": "Wyczyść",
         "btn.close": "Zamknij",
+        "btn.copy": "Kopiuj",
 
         # status badges
         "status.not_subscribed": "Brak subskrypcji",
@@ -252,6 +265,17 @@ STRINGS = {
         "console.title": "Log — PZ Updater",
         "console.heading": "Log błędów i zdarzeń",
         "console.empty": "(brak wpisów)",
+
+        # one-time notices (see pzupdater.NOTICE_KEYS)
+        "notice.copied": "Skopiowano",
+        "notice.zombiebuddy_launch_options.title": "Jeszcze jeden krok dla ZombieBuddy",
+        "notice.zombiebuddy_launch_options.body":
+            "Pliki są już w folderze gry, ale gra wczyta je dopiero po ustawieniu tej "
+            "opcji startowej.\n\n"
+            "W Steamie: kliknij Project Zomboid prawym przyciskiem, wybierz "
+            "Właściwości, potem Opcje uruchamiania i wklej poniższą linię. Dwie "
+            "kreski na końcu są jej częścią, nie usuwaj ich.",
+        "notice.zombiebuddy_launch_options.value": "-agentlib:zbNative --",
     },
 }
 

@@ -10,6 +10,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import i18n
+import pzupdater
 
 
 class TestTables(unittest.TestCase):
@@ -87,6 +88,24 @@ class TestFilesPlural(unittest.TestCase):
     def test_translator_uses_its_language(self):
         self.assertEqual(i18n.Translator("pl").files(3), "3 pliki")
         self.assertEqual(i18n.Translator("en").files(3), "3 files")
+
+
+class TestNotices(unittest.TestCase):
+    """Teksty powiadomień pokazywanych raz, po pierwszej instalacji moda."""
+
+    def test_every_notice_has_all_its_texts(self):
+        for name in pzupdater.NOTICE_KEYS:
+            for part in ("title", "body", "value"):
+                key = f"notice.{name}.{part}"
+                for language in i18n.LANGUAGES:
+                    self.assertTrue(i18n.STRINGS[language].get(key), msg=f"{language}: {key}")
+
+    def test_the_launch_option_is_identical_in_every_language(self):
+        """The copied line has to be the same whichever language is selected."""
+        for language in i18n.LANGUAGES:
+            self.assertEqual(
+                i18n.STRINGS[language]["notice.zombiebuddy_launch_options.value"],
+                "-agentlib:zbNative --")
 
 
 if __name__ == "__main__":
