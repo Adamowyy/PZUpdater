@@ -375,7 +375,7 @@ def find_jar(workshop_dir, jar_name, search_under):
     return None
 
 
-def update_jar_replace(mod, game, ws, t):
+def update_jar_replace(mod, game, ws, t, prev=None):
     jar = find_jar(ws, mod["jar_name"], mod.get("search_under"))
     if not jar:
         return False, t("action.jar_missing", mod["jar_name"]), {}
@@ -384,7 +384,7 @@ def update_jar_replace(mod, game, ws, t):
     return True, t("action.jar_replaced"), {"version": version}
 
 
-def update_folder_copy(mod, game, ws, t):
+def update_folder_copy(mod, game, ws, t, prev=None):
     manual = os.path.join(ws, mod["manual_dir"])
     version_dir = newest_version_folder(manual)
     if not version_dir:

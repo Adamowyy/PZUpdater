@@ -8,6 +8,7 @@ import shutil
 import tempfile
 import unittest
 import zipfile
+import inspect
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -286,6 +287,19 @@ class TestPlural(unittest.TestCase):
         self.assertEqual(i18n.files_plural(12, "pl"), "12 plików")
         self.assertEqual(i18n.files_plural(22, "pl"), "22 pliki")
         self.assertEqual(i18n.files_plural(25, "pl"), "25 plików")
+
+
+class TestActionHandlerSignatures(unittest.TestCase):
+    """Każdy handler dostaje od workera (mod, game, ws, t, prev), nie cztery argumenty."""
+
+    def test_every_handler_accepts_prev_argument(self):
+        for mod_type, handler in pz.ACTION_HANDLERS.items():
+            with self.subTest(mod_type=mod_type):
+                inspect.signature(handler).bind("m", "game", "ws", "t", {})
+                # prev musi mieć domyślną wartość, by stare wywołania 4-arg działały
+                params = inspect.signature(handler).parameters
+                prev = params["prev"]
+                self.assertIs(prev.default, None, msg=mod_type)
 
 
 if __name__ == "__main__":
