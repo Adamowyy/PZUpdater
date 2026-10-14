@@ -573,6 +573,114 @@ class TestDeprecatedRow(unittest.TestCase):
         self.assertFalse(info["muted"])
 
 
+def make_jar(path, version):
+    """Minimalny jar z manifestem takim, jak w prawdziwym ZombieBuddy."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("me/zed_0xff/zombie_buddy/Main.class", b"\xca\xfe\xba\xbe")
+        z.writestr("META-INF/MANIFEST.MF",
+                   "Manifest-Version: 1.0\r\nImplementation-Version: %s\r\n\r\n" % version)
+    return path
+
+
+def headless_app(game, ws_map, state=None):
+    """Aplikacja bez okna: prawdziwe metody liczenia stanu, atrapa tylko reszty."""
+    class App:
+        _install_state = pz.PZUpdaterApp._install_state
+        _installed_build = pz.PZUpdaterApp._installed_build
+        _installed_files = pz.PZUpdaterApp._installed_files
+        _jar_version_of = pz.PZUpdaterApp._jar_version_of
+        _mod_by_workshop_id = pz.PZUpdaterApp._mod_by_workshop_id
+        _is_obsolete = pz.PZUpdaterApp._is_obsolete
+        _is_hidden = pz.PZUpdaterApp._is_hidden
+        _visible_mods = pz.PZUpdaterApp._visible_mods
+        _status_info = pz.PZUpdaterApp._status_info
+        _pending_actions = pz.PZUpdaterApp._pending_actions
+        _installed_for_update = pz.PZUpdaterApp._installed_for_update
+        _files_note = pz.PZUpdaterApp._files_note
+        _mod_name = pz.PZUpdaterApp._mod_name
+        _saved_ts = pz.PZUpdaterApp._saved_ts
+
+        def __init__(self):
+            self.paths = {"game_dir": game, "workshop": ws_map}
+            self.steam_info = {}
+            self.state = state or {"mods": {}}
+            self._sources = pz.accepted_sources(pz.UPDATABLE_MODS, ws_map)
+
+        def t(self, key, *args):
+            return key
+
+    return App()
+
+
+class TestOutdatedBuildInGame(TempCase):
+    """Zgłoszony przypadek: mod, którego build jest w grze, dostał aktualizację.
+
+    Jar w grze przestaje być identyczny ze swoją kopią w warsztacie, więc rodzina
+    nie może zgubić tego, co jest zainstalowane (przycisk Aktualizuj i „Przestarzały"
+    przy fixie zależą od tego, który build leży w folderze gry).
+    """
+
+    def setUp(self):
+        super().setUp()
+        pz.JAR_VERSION_CACHE.clear()
+        self.ws_rel = self.p("ws_rel")
+        self.ws_fix = self.p("ws_fix")
+        self.ws_beta = self.p("ws_beta")
+        for ws, version in ((self.ws_rel, "2.2.0"), (self.ws_beta, "3.0.0-beta2")):
+            make_jar(os.path.join(ws, "mods", "ZombieBuddy", "libs", "ZombieBuddy.jar"),
+                     version)
+            write(os.path.join(ws, "mods", "ZombieBuddy", "libs", "zbNative.dll"), b"DLL")
+        make_jar(os.path.join(self.ws_fix, "mods", "ZombieBuddy_Extensions", "42",
+                              "ZombieBuddy.jar"), "2.3.4")
+        # Gra ma build o jedną wersję starszy niż jego kopia w warsztacie
+        self.game_with_jar("3.0.0-beta1")
+        self.RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
+        self.FIX = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+        self.BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
+        # Jak na maszynie, na której to wyszło: wydanie bez subskrypcji, beta w grze
+        self.ws_map = {"zombiebuddy": None, "zombiebuddy_fix": self.ws_fix,
+                       "zombiebuddy_beta": self.ws_beta}
+
+    def game_with_jar(self, version):
+        pz.JAR_VERSION_CACHE.clear()
+        make_jar(os.path.join(self.game, "ZombieBuddy.jar"), version)
+        write(os.path.join(self.game, "zbNative.dll"), b"DLL")
+
+    def tearDown(self):
+        super().tearDown()
+        pz.JAR_VERSION_CACHE.clear()
+
+    def test_the_updated_beta_still_names_itself_as_the_build_in_the_game(self):
+        self.assertIs(pz.installed_build(self.BETA, self.game, self.ws_map), self.BETA)
+        self.assertIs(pz.installed_build(self.RELEASE, self.game, self.ws_map), self.BETA)
+
+    def test_the_release_keeps_its_name_when_the_release_itself_got_updated(self):
+        self.game_with_jar("2.1.0")
+        ws_map = dict(self.ws_map, zombiebuddy=self.ws_rel)
+        self.assertIs(pz.installed_build(self.RELEASE, self.game, ws_map), self.RELEASE)
+
+    def test_an_unreadable_jar_still_belongs_to_nobody(self):
+        write(os.path.join(self.game, "ZombieBuddy.jar"), b"OLD-BUILD-WITHOUT-MANIFEST")
+        pz.JAR_VERSION_CACHE.clear()
+        self.assertIsNone(pz.installed_build(self.BETA, self.game, self.ws_map))
+
+    def test_the_extensions_stay_out_of_the_way_of_the_installed_beta(self):
+        app = headless_app(self.game, self.ws_map)
+        self.assertTrue(app._is_obsolete(self.FIX))
+
+    def test_the_extensions_are_offered_normally_when_no_beta_is_in_the_game(self):
+        self.game_with_jar("2.1.0")
+        app = headless_app(self.game, dict(self.ws_map, zombiebuddy=self.ws_rel))
+        self.assertFalse(app._is_obsolete(self.FIX))
+
+    def test_the_main_button_updates_the_build_that_is_in_the_game(self):
+        app = headless_app(self.game, self.ws_map)
+        self.assertEqual([m["key"] for m in app._installed_for_update()],
+                         ["zombiebuddy_beta"])
+        self.assertEqual(app._pending_actions(), {"zombiebuddy_beta": "install"})
+
+
 class TestRegistryRelations(unittest.TestCase):
     """Pola wiążące wpisy muszą wskazywać na istniejące mody i nie na siebie."""
 

@@ -753,16 +753,49 @@ def build_family(mod, mods=None):
             if m["workshop_id"] == root_id or m.get("alternative_to") == root_id]
 
 
+def build_lane(name):
+    """The marker an author put in front of a release number (beta, rc...)."""
+    found = PRERELEASE.search(name or "")
+    return found.group(1).lower() if found else ""
+
+
 def installed_build(mod, game, workshop_map, mods=None):
-    """The entry of this mod's family whose jar is in the game folder."""
+    """The entry of this mod's family whose jar is in the game folder.
+
+    Byte identity is the exact answer, but it disappears the moment the build in
+    the game gets an update: the jar in the game is then one step behind its own
+    source in the workshop. The version still says where it came from - it is
+    the closest source that supersedes it, staying on the same lane so a beta is
+    never taken for a release.
+    """
     if not game:
         return None
+    sources = []
     for candidate in build_family(mod, mods):
         for rel, kind, src in mod_targets(candidate, workshop_map.get(candidate["key"]), game):
-            if (kind == "file" and src and rel.lower().endswith(".jar")
-                    and files_identical(src, os.path.join(game, rel))):
-                return candidate
-    return None
+            if kind == "file" and src and rel.lower().endswith(".jar"):
+                sources.append((candidate, src, os.path.join(game, rel)))
+                break       # one jar per entry names the whole entry
+    for candidate, src, dst in sources:
+        if files_identical(src, dst):
+            return candidate
+    version = next((jar_version(dst) for _c, _s, dst in sources
+                    if os.path.isfile(dst)), None)
+    if not version:
+        return None
+    lane, key = build_lane(version), release_key(version)
+    same_lane = []
+    for candidate, src, _dst in sources:
+        source = jar_version(src)
+        if source and build_lane(source) == lane:
+            same_lane.append((candidate, release_key(source)))
+    if not same_lane:
+        return None
+    newer = [(c, k) for c, k in same_lane if k >= key]
+    # The build in the game sits one step below the source it came from, so the
+    # first source that follows that version is the one that put it there.
+    return (min(newer, key=lambda ck: ck[1]) if newer
+            else max(same_lane, key=lambda ck: ck[1]))[0]
 
 
 def offers_switch(mod, installed):
