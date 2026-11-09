@@ -53,7 +53,8 @@ def report(app, title):
         elif info["files_note"]:
             note = f"  {info['files_note']}"
         print(f"  {m['key']:20s} {info['status']:32s} pending={str(info['pending']):8s}"
-              f" muted={str(info['muted']):5s} switch={info['switch']}{note}")
+              f" muted={str(info['muted']):5s} switch={info['switch']}"
+              f" remove={bool(app._installed_files(m))}{note}")
     pending = app._pending_actions()
     print("  status bar, to install/update:", pending or "—")
     print("  main Update button:", [m["key"] for m in app._installed_for_update()] or "GREYED OUT")

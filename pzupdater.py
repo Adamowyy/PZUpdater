@@ -1828,9 +1828,35 @@ class PZUpdaterApp:
 
     # -- mod state ------------------------------------------------------------
     def _installed_files(self, mod):
-        """Files the last install wrote for this mod, as recorded in the state."""
+        """Files from the last install that are still in the game folder.
+
+        The record alone is not enough: the repair and the user both move files
+        out by hand, and a record without files left an "Uninstall" button on a
+        mod that was not installed anywhere.
+        """
         entry = self.state.get("mods", {}).get(mod["workshop_id"]) or {}
-        return entry.get("files") or {}
+        game = self.paths.get("game_dir")
+        files = entry.get("files") or {}
+        if not game:
+            return {}
+        return {rel: digest for rel, digest in files.items()
+                if os.path.exists(os.path.join(game, rel))}
+
+    def _prune_dead_records(self):
+        """Drops install records whose files are gone from the game folder."""
+        game = self.paths.get("game_dir")
+        mods = self.state.get("mods") or {}
+        if not game or not mods:
+            return
+        dead = [wid for wid, entry in mods.items()
+                if (entry.get("files") or {})
+                and not any(os.path.exists(os.path.join(game, rel))
+                            for rel in entry["files"])]
+        for wid in dead:
+            mods.pop(wid, None)
+            self._log("INFO", self.t("msg.forgot_install", wid))
+        if dead:
+            save_state(self.state)
 
     def _install_state(self, mod):
         return mod_install_state(mod, self.paths["game_dir"], self.paths["workshop"],
@@ -1929,6 +1955,15 @@ class PZUpdaterApp:
                             files_note=self.t("detail.patch_start_game"))
                 return info
             if not class_patch_folder(mod, ws, build["build"]):
+                # No package for this build. If the mod's own files were left in
+                # the game folder by an earlier install, they are older than the
+                # game now and nothing looks after them - say so and offer to
+                # take them out, instead of a quiet "no build for this game".
+                if self._installed_files(mod):
+                    info.update(status=self.t("status.stale_files"), tag="old",
+                                pending="remove",
+                                files_note=self.t("detail.stale_files"))
+                    return info
                 info.update(status=self.t("status.no_patch_build", build["build"]),
                             tag="old", muted=True,
                             files_note=self.t("detail.patch_wait"))
@@ -2208,6 +2243,7 @@ class PZUpdaterApp:
             self._rebuild_ui()
             return
         # left column: mods the app updates
+        self._prune_dead_records()
         infos = {}
         for m in self._visible_mods():
             key = m["key"]
@@ -2268,6 +2304,11 @@ class PZUpdaterApp:
                     card["action"].configure(text=self.t("btn.repair"),
                                              fg_color=DANGER, hover_color="#b91c1c",
                                              command=lambda k=key: self.do_repair(k))
+                elif info["pending"] == "remove":
+                    card["action"].configure(text=self.t("btn.remove_files"),
+                                             fg_color=CARD_SEL, hover_color=BORDER,
+                                             text_color=TEXT,
+                                             command=lambda k=key: self.do_remove(k))
                 else:
                     if info["switch"]:
                         label = self.t("btn.switch_to", info["switch_name"])

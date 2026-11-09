@@ -266,8 +266,11 @@ class TestRowStatus(RepairCase):
         _mod_name = pz.PZUpdaterApp._mod_name
         _install_state = pz.PZUpdaterApp._install_state
         _installed_build = pz.PZUpdaterApp._installed_build
+        _installed_files = pz.PZUpdaterApp._installed_files
+        _prune_dead_records = pz.PZUpdaterApp._prune_dead_records
         _is_obsolete = lambda self, mod: False
         _saved_ts = lambda self, wid: 0
+        _log = lambda self, *args: None
 
         def __init__(self, game, workshop):
             self.paths = {"game_dir": game, "workshop": workshop}
@@ -339,6 +342,73 @@ class TestRowStatus(RepairCase):
         info = pz.PZUpdaterApp._status_info(app, self.mod("tempo_patches"))
         self.assertFalse(info["signed_warning"])
         self.assertEqual(info["pending"], "install")
+
+    # -- the record of an install has to match the disk -----------------------
+
+    def record(self, app, rel):
+        """Zapis instalacji, jaki aplikacja zostawia po wgraniu paczki."""
+        mod = self.mod("tempo_patches")
+        app.state["mods"][mod["workshop_id"]] = {"files": {rel: "abc"}}
+        return mod
+
+    def test_a_record_without_files_offers_no_uninstall(self):
+        """Pliki wycofane ręcznie albo przez naprawę -> nie ma czego odinstalować."""
+        app = self.App(self.game, self.workshop())
+        mod = self.record(app, "zombie/iso/IsoWorld.class")
+        self.assertEqual(pz.PZUpdaterApp._installed_files(app, mod), {})
+
+    def test_a_record_with_files_on_disk_offers_the_uninstall(self):
+        app = self.App(self.game, self.workshop())
+        mod = self.record(app, "zombie/iso/IsoWorld.class")
+        self.stray("zombie/iso/IsoWorld.class")
+        self.assertEqual(list(pz.PZUpdaterApp._installed_files(app, mod)),
+                         ["zombie/iso/IsoWorld.class"])
+
+    def test_leftover_files_from_an_older_game_are_offered_for_removal(self):
+        """Gra się zaktualizowała, paczki pod nowy build nie ma, a pliki zostały."""
+        self.jar(signed=False)
+        self.build_for("42.22.2")
+        app = self.App(self.game, self.tempo_for("42.21.0"))
+        mod = self.record(app, "extras/perf/Boost.class")
+        self.stray("extras/perf/Boost.class")
+        info = pz.PZUpdaterApp._status_info(app, mod)
+        self.assertEqual(info["status"], "status.stale_files")
+        self.assertEqual(info["pending"], "remove")
+        self.assertEqual(info["files_note"], "detail.stale_files")
+        self.assertFalse(info["muted"])
+
+    def test_leftover_classes_that_clash_with_the_new_jar_ask_for_a_repair(self):
+        """Ten sam przypadek, ale klasy wchodzą w pakiet gry: gra w ogóle nie wstanie."""
+        self.jar(signed=True)
+        self.build_for("42.22.2")
+        app = self.App(self.game, self.tempo_for("42.21.0"))
+        mod = self.record(app, "zombie/iso/IsoWorld.class")
+        self.stray("zombie/iso/IsoWorld.class")
+        info = pz.PZUpdaterApp._status_info(app, mod)
+        self.assertEqual(info["status"], "status.repair_needed")
+        self.assertEqual(info["pending"], "repair")
+        self.assertEqual(info["repair"], 1)
+
+    def test_a_dead_record_is_dropped_from_the_state(self):
+        app = self.App(self.game, self.workshop())
+        mod = self.record(app, "zombie/iso/IsoWorld.class")
+        saved = []
+        original = pz.save_state
+        pz.save_state = saved.append
+        self.addCleanup(setattr, pz, "save_state", original)
+        pz.PZUpdaterApp._prune_dead_records(app)
+        self.assertNotIn(mod["workshop_id"], app.state["mods"])
+        self.assertEqual(len(saved), 1)
+
+    def test_a_live_record_survives_the_prune(self):
+        app = self.App(self.game, self.workshop())
+        mod = self.record(app, "zombie/iso/IsoWorld.class")
+        self.stray("zombie/iso/IsoWorld.class")
+        original = pz.save_state
+        pz.save_state = lambda state: self.fail("nic nie miało być zapisywane")
+        self.addCleanup(setattr, pz, "save_state", original)
+        pz.PZUpdaterApp._prune_dead_records(app)
+        self.assertIn(mod["workshop_id"], app.state["mods"])
 
 
 if __name__ == "__main__":
