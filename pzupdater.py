@@ -42,7 +42,7 @@ PROFILE_URL = "https://steamcommunity.com/id/AdamowY/"
 
 # Bumped by hand with every release. The running exe compares itself against the
 # newest GitHub release, so the number here has to match the tag of the build.
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.1.2"
 RELEASES_API = "https://api.github.com/repos/Adamowyy/PZUpdater/releases/latest"
 APP_EXE_NAME = "PZUpdater.exe"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION}"
@@ -1208,21 +1208,28 @@ def download_app_update(release):
 # and starts it again. The wait is on the PID: tasklist does not see processes
 # from a windowless cmd, and waiting on the image name would also catch an
 # unrelated copy of the app. A second move 2 s later covers a file the system
-# still holds for a moment; if even that fails, the old exe starts again.
+# still holds for a moment; if every try fails it gives up, and because the old
+# file was never touched the app the user has still runs.
 NEWLINE_CRLF = chr(13) + chr(10)      # a batch file needs real CRLF, whatever this file uses
 
 SELF_UPDATE_SCRIPT = NEWLINE_CRLF.join([
     "@echo off",
-    "setlocal",
+    "setlocal enabledelayedexpansion",
     "set \"TARGET={target}\"",
     "set \"NEW={new}\"",
-    ":wait",
+    "set \"_MEIPASS2=\"",
+    "set \"_PYI_APPLICATION_HOME_DIR=\"",
+    "set \"_PYI_PARENT_PROCESS_LEVEL=\"",
     "powershell -NoProfile -WindowStyle Hidden -Command \"Wait-Process -Id {pid} -ErrorAction SilentlyContinue\" 2>nul",
+    "set /a tries=0",
+    ":move",
     "move /y \"%NEW%\" \"%TARGET%\" >nul",
-    "if errorlevel 1 (",
-    "  timeout /t 2 /nobreak >nul",
-    "  move /y \"%NEW%\" \"%TARGET%\" >nul",
-    ")",
+    "if not errorlevel 1 goto start",
+    "set /a tries+=1",
+    "if %tries% geq 15 exit /b 1",
+    "timeout /t 1 /nobreak >nul",
+    "goto move",
+    ":start",
     "start \"\" \"%TARGET%\"",
     "",
 ])
@@ -1238,10 +1245,15 @@ def launch_self_update(new_exe, target=None):
     # newline="" keeps the CRLF that is already in the script
     with open(bat, "w", encoding="utf-8", newline="") as f:
         f.write(script)
+    # A frozen onefile build tells whatever it starts where it unpacked itself.
+    # Passing that on would make the next build reuse a folder this one deletes
+    # on the way out, and it dies with "LoadLibrary: python311.dll not found".
+    env = {k: v for k, v in os.environ.items()
+           if k != "_MEIPASS2" and not k.startswith("_PYI")}
     flags = 0
     if os.name == "nt":
         flags = 0x00000008 | 0x00000200    # DETACHED_PROCESS | NEW_PROCESS_GROUP
-    subprocess.Popen(["cmd.exe", "/c", bat], creationflags=flags, close_fds=True)
+    subprocess.Popen(["cmd.exe", "/c", bat], creationflags=flags, close_fds=True, env=env)
     return bat
 
 

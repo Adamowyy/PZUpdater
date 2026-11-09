@@ -155,6 +155,19 @@ class TestSelfUpdateScript(unittest.TestCase):
         self.assertNotIn("tasklist", pz.SELF_UPDATE_SCRIPT)
         self.assertIn("Wait-Process -Id {pid}", pz.SELF_UPDATE_SCRIPT)
 
+    def test_the_restarted_build_is_not_told_where_this_one_unpacked(self):
+        """_MEIPASS2 z onefile wskazywałby na folder, który ten build kasuje."""
+        self.assertIn('set "_MEIPASS2="', pz.SELF_UPDATE_SCRIPT)
+        self.assertIn('set "_PYI_APPLICATION_HOME_DIR="', pz.SELF_UPDATE_SCRIPT)
+
+    def test_the_move_is_retried_before_giving_up(self):
+        self.assertIn(":move", pz.SELF_UPDATE_SCRIPT)
+        self.assertIn("goto move", pz.SELF_UPDATE_SCRIPT)
+        # dopiero po nieudanych próbach rezygnuje - i nie uruchamia niczego
+        script = pz.SELF_UPDATE_SCRIPT
+        self.assertLess(script.index("if %tries% geq"), script.index(':start'))
+        self.assertEqual(script.count("start "), 1)
+
     def test_the_batch_file_has_real_crlf(self):
         self.assertIn(pz.NEWLINE_CRLF, pz.SELF_UPDATE_SCRIPT)
         self.assertNotIn("\n\n", pz.SELF_UPDATE_SCRIPT.replace(pz.NEWLINE_CRLF, "|"))
@@ -172,13 +185,18 @@ class TestSelfUpdateScript(unittest.TestCase):
         def fake_popen(args, **kwargs):
             started["args"] = args
             started["flags"] = kwargs.get("creationflags", 0)
+            started["env"] = kwargs.get("env")
 
         pz.subprocess.Popen = fake_popen
+        os.environ["_MEIPASS2"] = r"C:\gone\_MEI123"
+        os.environ["_PYI_APPLICATION_HOME_DIR"] = r"C:\gone\_MEI123"
         try:
             bat = pz.launch_self_update(os.path.join(tmp, "new.exe"),
                                         target=os.path.join(tmp, "PZUpdater.exe"))
         finally:
             pz.subprocess.Popen = original
+            os.environ.pop("_MEIPASS2", None)
+            os.environ.pop("_PYI_APPLICATION_HOME_DIR", None)
         self.assertTrue(os.path.isfile(bat))
         with open(bat, "rb") as f:
             raw = f.read()
@@ -187,6 +205,13 @@ class TestSelfUpdateScript(unittest.TestCase):
         self.assertEqual(started["args"][0], "cmd.exe")
         self.assertEqual(started["args"][1], "/c")
         self.assertTrue(started["flags"] & 0x00000008)     # DETACHED_PROCESS
+        # nic z tego, co powie nowemu buildowi, gdzie ten się rozpakował
+        env = started["env"]
+        self.assertIsNotNone(env)
+        self.assertNotIn("_MEIPASS2", env)
+        self.assertFalse([k for k in env if k.startswith("_PYI")])
+        # ... ale reszta środowiska zostaje (PATH, APPDATA itd.)
+        self.assertIn("PATH", env)
 
 
 class TestTranslations(unittest.TestCase):
