@@ -41,12 +41,13 @@ def write(path, content=b"x"):
     return path
 
 
-def make_jar(path, classes=JAR_CLASSES, signed=False):
-    """Jar gry: klasy plus, opcjonalnie, znaczniki podpisu z buildów 42.22+."""
+def make_jar(path, classes=JAR_CLASSES, signed=False, revision="3d39148846"):
+    """Jar gry: klasy, wersja w GitVersion.class i, opcjonalnie, podpis 42.22+."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with zipfile.ZipFile(path, "w") as z:
         for name in classes:
             z.writestr(name, b"\xca\xfe\xba\xbe")
+        z.writestr("zombie/GitVersion.class", b"\xca\xfe\xba\xbe" + revision.encode())
         if signed:
             z.writestr("META-INF/PROJECTZ.SF", b"signature")
             z.writestr("META-INF/PROJECTZ.EC", b"block")
@@ -58,17 +59,23 @@ class RepairCase(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="pzupd_repair_")
         self.game = os.path.join(self.tmp, "game")
         os.makedirs(self.game)
+        self.profile = os.path.join(self.tmp, "profile")
         self._appdata = os.environ.get("APPDATA")
+        self._userprofile = os.environ.get("USERPROFILE")
         os.environ["APPDATA"] = os.path.join(self.tmp, "appdata")
+        os.environ["USERPROFILE"] = self.profile
         pz.JAR_INFO_CACHE.clear()
+        pz.GAME_BUILD_CACHE.clear()
         self.t = i18n.Translator("pl")
 
     def tearDown(self):
-        if self._appdata is None:
-            os.environ.pop("APPDATA", None)
-        else:
-            os.environ["APPDATA"] = self._appdata
+        for name, value in (("APPDATA", self._appdata), ("USERPROFILE", self._userprofile)):
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
         pz.JAR_INFO_CACHE.clear()
+        pz.GAME_BUILD_CACHE.clear()
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def jar(self, signed=False):
@@ -248,7 +255,7 @@ class TestBackupTakenClasses(RepairCase):
 
 
 class TestRowStatus(RepairCase):
-    """Wiersz moda: najpierw blokada gry, potem niezgodność z podpisanym jarem."""
+    """Wiersz moda: blokada gry, ostrzeżenie o podpisanym jarze, ale update widoczny."""
 
     class App:
         _repair_state = pz.PZUpdaterApp._repair_state
@@ -257,15 +264,16 @@ class TestRowStatus(RepairCase):
         _manifests = pz.PZUpdaterApp._manifests
         _status_info = pz.PZUpdaterApp._status_info
         _mod_name = pz.PZUpdaterApp._mod_name
+        _install_state = pz.PZUpdaterApp._install_state
+        _installed_build = pz.PZUpdaterApp._installed_build
         _is_obsolete = lambda self, mod: False
         _saved_ts = lambda self, wid: 0
-        _installed_build = lambda self, mod: None
-        _install_state = lambda self, mod: (pz.INSTALL_UNKNOWN, 0, 0)
 
         def __init__(self, game, workshop):
             self.paths = {"game_dir": game, "workshop": workshop}
             self.steam_info = {}
             self.state = {"mods": {}}
+            self._sources = pz.accepted_sources(pz.UPDATABLE_MODS, workshop)
             self._repair = None
 
         def t(self, key, *args):
@@ -276,6 +284,20 @@ class TestRowStatus(RepairCase):
 
     def mod(self, key):
         return next(m for m in pz.UPDATABLE_MODS if m["key"] == key)
+
+    def build_for(self, build="42.22.2", revision="3d39148846"):
+        write(os.path.join(self.profile, "Zomboid", "version.txt"),
+              f"{build} {revision}\nrevision={revision}\n".encode())
+        pz.GAME_BUILD_CACHE.clear()
+
+    def tempo_for(self, build="42.22.2"):
+        """Paczka Tempo zrobiona pod ten build - 'czeka na swój moment'."""
+        ws = os.path.join(self.tmp, "ws_tempo_now")
+        src = os.path.join(ws, "mods", "Tempo_PerfKit", "manual_installation",
+                           build, "zombie")
+        for rel in STRAYS[:3]:
+            write(os.path.join(src, *rel.split("/")[1:]), b"tempo-" + build.encode())
+        return {"tempo_patches": ws}
 
     def test_files_in_the_game_folder_make_the_row_a_repair(self):
         self.jar(signed=True)
@@ -289,22 +311,34 @@ class TestRowStatus(RepairCase):
         self.assertEqual(info["repair"], 3)
         self.assertFalse(info["muted"])
 
-    def test_a_clean_folder_only_flags_the_signed_jar(self):
+    def test_a_patch_for_this_build_is_offered_even_with_a_signed_jar(self):
+        """Sedno: autor wydał paczkę pod 42.22.2 -> jest do zainstalowania."""
         self.jar(signed=True)
-        app = self.App(self.game, self.workshop())
+        self.build_for("42.22.2")
+        app = self.App(self.game, self.tempo_for("42.22.2"))
         info = pz.PZUpdaterApp._status_info(app, self.mod("tempo_patches"))
-        self.assertIsNone(info["pending"])
-        self.assertEqual(info["status"], "status.signed_jar")
-        self.assertEqual(info["files_note"], "detail.signed_jar")
-        self.assertEqual(info["repair"], 0)
+        self.assertEqual(info["pending"], "install")
+        self.assertEqual(info["status"], "status.subscribed_not_installed")
+        self.assertTrue(info["signed_warning"])
+        # wyszarzony tytuł (jak każdy niezainstalowany), ale przycisk jest
+        self.assertTrue(info["muted"])
 
-    def test_an_unsigned_jar_leaves_the_row_installable(self):
-        """Autor moda wyda paczkę na nowy build - wiersz wraca do normalnego działania."""
-        self.jar(signed=False)
-        app = self.App(self.game, self.workshop())
+    def test_no_patch_for_this_build_waits_instead_of_nagging(self):
+        self.jar(signed=True)
+        self.build_for("42.22.2")
+        app = self.App(self.game, self.tempo_for("42.21.0"))
         info = pz.PZUpdaterApp._status_info(app, self.mod("tempo_patches"))
-        self.assertNotEqual(info["status"], "status.signed_jar")
-        self.assertNotEqual(info["pending"], "repair")
+        self.assertEqual(info["status"], "status.no_patch_build")
+        self.assertIsNone(info["pending"])
+        self.assertTrue(info["signed_warning"])
+
+    def test_an_unsigned_jar_has_no_warning_at_all(self):
+        self.jar(signed=False)
+        self.build_for("42.22.2")
+        app = self.App(self.game, self.tempo_for("42.22.2"))
+        info = pz.PZUpdaterApp._status_info(app, self.mod("tempo_patches"))
+        self.assertFalse(info["signed_warning"])
+        self.assertEqual(info["pending"], "install")
 
 
 if __name__ == "__main__":

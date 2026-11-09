@@ -42,7 +42,7 @@ PROFILE_URL = "https://steamcommunity.com/id/AdamowY/"
 
 # Bumped by hand with every release. The running exe compares itself against the
 # newest GitHub release, so the number here has to match the tag of the build.
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 RELEASES_API = "https://api.github.com/repos/Adamowyy/PZUpdater/releases/latest"
 APP_EXE_NAME = "PZUpdater.exe"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION}"
@@ -850,21 +850,19 @@ def clashing_classes(game_dir, rels=None):
 def patch_conflicts(game_dir, mod):
     """True when this mod would write classes the JVM refuses next to the jar.
 
-    True for every mod that copies a folder whose name is a package root of the
-    jar ("zombie") while the jar is signed - the version does not matter there,
-    the signer does. With an unsigned jar only the same file path clashes, which
-    is what the app has always allowed.
+    Only a signed jar is a problem: with an unsigned one, copying classes over the
+    game's own is exactly what these mods have always done. When it is signed, a
+    mod that writes into a package the jar also uses breaks that whole package -
+    the version does not matter there, the signer does.
     """
     info = jar_info(game_dir)
-    if not info:
+    if not info or not info["signed"]:
         return False
     rel = (mod.get("target_rel") or mod.get("copy_name") or "").strip("/\\")
     if not rel:
         return False
     low = rel.replace("\\", "/").lower()
-    if low in info["classes"] or low in info["packages"]:
-        return True
-    return bool(info["signed"] and low.split("/", 1)[0] in info["top"])
+    return low.split("/", 1)[0] in info["top"] or low in info["packages"]
 
 
 def mod_owned_paths(mod, ws):
@@ -1818,7 +1816,7 @@ class PZUpdaterApp:
         info = {"install": install, "ok": ok, "total": total, "pending": None,
                 "muted": False, "status": "", "tag": "", "files_note": None,
                 "switch": False, "switch_name": "", "repair": 0,
-                "name": self._mod_name(mod)}
+                "signed_warning": False, "name": self._mod_name(mod)}
         # Files of this mod that are in the game folder and which the JVM refuses:
         # the game does not start at all, so nothing else about this row matters.
         strays = self._repair_files(mod)
@@ -1826,16 +1824,15 @@ class PZUpdaterApp:
             info.update(status=self.t("status.repair_needed"), tag="err",
                         pending="repair", repair=len(strays))
             return info
-        if self._blocked_by_signature(mod):
-            # The jar is signed, so every class copied next to it breaks a whole
-            # package. Correct version or not, this mod cannot be installed until
-            # the game ships an unsigned jar again or the author changes approach.
-            info.update(status=self.t("status.signed_jar"), tag="old",
-                        files_note=self.t("detail.signed_jar"))
-            return info
         if not ws:
             info.update(status=self.t("status.not_subscribed"), tag="gray", muted=True)
             return info
+        # A signed game jar refuses copied classes, but that is a warning on the
+        # row, not a ban: the author may have changed the way the mod works, and
+        # an update has to stay visible and installable either way.
+        if self._blocked_by_signature(mod):
+            info["signed_warning"] = True
+            info["files_note"] = self.t("detail.signed_jar")
         if mod["type"] == "class_patch":
             # Made for one game version each: without the matching files, or without a
             # way to tell which version the game folder holds, nothing may be copied.
@@ -2162,7 +2159,7 @@ class PZUpdaterApp:
             if info["switch"]:
                 pass      # the badge already names the build that is in the game
             elif info["files_note"]:
-                bits.append((info["files_note"], MUTED))
+                bits.append((info["files_note"], ALERT if info["signed_warning"] else MUTED))
             elif ws:
                 bits.append((self._files_note(info), MUTED))
             else:
@@ -2564,15 +2561,20 @@ class PZUpdaterApp:
             mods = self._installed_for_update()
         mods = [m for m in mods
                 if self.paths["workshop"].get(m["key"]) and not self._is_obsolete(m)]
-        # A mod that copies classes cannot be installed while the game jar is
-        # signed: the game would not start afterwards. Say so instead of doing it.
+        # A signed game jar refuses copied classes. The user asked for the mods to
+        # be installable anyway, so warn once and then do what was asked - the
+        # repair button and the check after the install cover the damage.
         blocked = [m for m in mods if patch_conflicts(self.paths["game_dir"], m)]
         if blocked:
-            for m in blocked:
-                self._log("ERROR", self.t("action.blocked_signed", self._mod_name(m)))
-            self._error(self.t("action.blocked_signed_many",
-                               ", ".join(self._mod_name(m) for m in blocked)))
-            mods = [m for m in mods if m not in blocked]
+            names = ", ".join(self._mod_name(m) for m in blocked)
+            if not messagebox.askyesno(self.t("dialog.signed.title"),
+                                       self.t("dialog.signed.body", names)):
+                mods = [m for m in mods if m not in blocked]
+                if not mods:
+                    self.set_status_key("msg.nothing_to_update")
+                    return
+            else:
+                self._log("WARN", self.t("msg.installing_signed", names))
         if not mods:
             self.set_status_key("msg.nothing_to_update")
             return
@@ -2597,12 +2599,7 @@ class PZUpdaterApp:
                     time.sleep(DEBUG_SLOW_SECONDS)
                 try:
                     handler = ACTION_HANDLERS.get(m["type"])
-                    if patch_conflicts(self.paths["game_dir"], m):
-                        # belt and braces: the row may have been built before the
-                        # game was updated
-                        ok, msg, meta = False, self.t("action.blocked_signed",
-                                                      self._mod_name(m)), {}
-                    elif handler is None:
+                    if handler is None:
                         ok, msg, meta = False, self.t("action.unknown_type"), {}
                     else:
                         prev = self.state.get("mods", {}).get(m["workshop_id"]) or {}
@@ -2639,6 +2636,10 @@ class PZUpdaterApp:
             failed = [f"{name}: {msg}" for name, ok, msg in result if not ok]
             for entry in failed:
                 self._log("ERROR", self.t("msg.update_failed_log", entry))
+            # The install may have put classes into a game folder whose jar is
+            # signed - check at once, so a game that no longer starts is repaired
+            # a click away instead of found out by the player tomorrow.
+            fresh = self._repair_state()
             self.refresh_statuses()
             self._hide_overlay_after_min_time()
             if failed:
@@ -2656,6 +2657,10 @@ class PZUpdaterApp:
                     self._show_notice(notice)
                 for _notice, other in clashing:
                     self._show_unsubscribe_notice(other)
+            if fresh["files"]:
+                self._log("WARN", self.t("msg.repair_after_install",
+                                         self.t.files(len(fresh["files"]))))
+                self.root.after(500, lambda s=fresh: self._show_repair_notice(s))
 
         self._run_async(work, on_done)
 

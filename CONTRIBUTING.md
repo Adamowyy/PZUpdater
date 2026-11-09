@@ -78,9 +78,9 @@ Then the fields for the chosen type:
 #
 # Since the game ships a signed jar (42.22+), classes copied into the game folder
 # make the JVM refuse the whole package and the game stops starting. Such an entry
-# is blocked while the jar is signed, and any file it left behind shows up as
-# "Blocks the game from starting" with a Repair button - see `patch_conflicts`
-# and `game_repair` in pzupdater.py.
+# still shows its updates and stays installable, but the row warns about it and the
+# install asks once; what landed badly is offered for repair right afterwards - see
+# `patch_conflicts` and `game_repair` in pzupdater.py.
 {
     "key": "some_patches",
     "name": "Some Mod - Optional Engine Patches",

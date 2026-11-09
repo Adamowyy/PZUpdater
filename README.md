@@ -75,10 +75,13 @@ The app checks the game folder against the jar on every start:
 - repaired files are **moved**, not deleted, into `%LOCALAPPDATA%\PZUpdater\removed\<date>\`
   (the exact folder is written to the log).
 
-While the jar stays signed, mods that copy classes into the game folder cannot
-be installed at all; the app says so instead of writing them and bricking the
-start. As soon as a game build ships an unsigned jar again, those rows go back
-to normal and can be installed as before.
+While the jar stays signed, mods that copy classes into the game folder keep
+showing their updates and stay installable — but the row warns that this build of
+the game will most likely refuse to start with those files, and pressing install
+asks once before it writes anything. The check right after the install catches
+it: if the files landed badly, the **Repair the game** dialog opens at once and
+takes exactly those files back out. Nothing is deleted, and nothing is hidden
+from you.
 
 ## Supported mods
 

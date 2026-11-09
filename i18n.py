@@ -115,6 +115,10 @@ STRINGS = {
         "msg.repaired_kept": "Moved {}, could not move {}.",
         "msg.repaired_folder": "The files are kept in: {}",
         "msg.repair_failed": "⚠ Nothing could be moved, close the game and try again.",
+        "msg.repair_after_install":
+            "⚠ {} in the game folder now clash with the signed jar — Repair the "
+            "game takes them back out.",
+        "msg.installing_signed": "Installing into a game with a signed jar: {}",
         "msg.app_version": "PZ Updater {}",
         "msg.app_update_found": "PZ Updater {} is available.",
         "msg.app_update_check_failed": "Could not check for a new app version: {}",
@@ -140,11 +144,6 @@ STRINGS = {
         "action.patches_removed": "Removed {} from the game folder.",
         "action.patches_removed_kept": "Removed {}, kept {} (changed after the install).",
         "action.nothing_to_remove": "Nothing to remove.",
-        "action.blocked_signed":
-            "{} copies game classes, and this build of Project Zomboid ships a "
-            "signed jar: the game will not start with them. Nothing was copied.",
-        "action.blocked_signed_many":
-            "Not installed, the game would not start afterwards: {}.",
         "error.update_checksum": "The downloaded file does not match the release checksum.",
         "error.update_broken": "The downloaded file is not a working PZ Updater build.",
 
@@ -164,6 +163,13 @@ STRINGS = {
             "them with the signed game jar.\n\n"
             "These {} file(s) have to go:\n\n{}\n\n"
             "They will be moved to the app's own folder, not deleted.",
+        "dialog.signed.title": "This mod copies classes into a signed game jar",
+        "dialog.signed.body":
+            "{} copies .class files into the game folder, and this build of Project "
+            "Zomboid ships a signed projectzomboid.jar. The game usually refuses to "
+            "start with those files in place.\n\n"
+            "Install anyway? If the game stops starting, the app offers to take the "
+            "files back out again — nothing is lost.",
         "dialog.app_update.title": "PZ Updater {} is available",
         "dialog.app_update.body":
             "You have {}, the newest release is {}. Updating downloads the new exe "
@@ -298,6 +304,10 @@ STRINGS = {
         "msg.repaired_kept": "Przeniesiono {}, nie udało się ruszyć {}.",
         "msg.repaired_folder": "Pliki zachowane w: {}",
         "msg.repair_failed": "⚠ Nie udało się nic przenieść, zamknij grę i spróbuj ponownie.",
+        "msg.repair_after_install":
+            "⚠ {} w folderze gry koliduje teraz z podpisanym jarem — „Napraw grę” "
+            "je wycofa.",
+        "msg.installing_signed": "Instaluję mimo podpisanego jara gry: {}",
         "msg.app_version": "PZ Updater {}",
         "msg.app_update_found": "Dostępna jest nowa wersja PZ Updater {}.",
         "msg.app_update_check_failed": "Nie udało się sprawdzić nowej wersji aplikacji: {}",
@@ -323,11 +333,6 @@ STRINGS = {
         "action.patches_removed": "Usunięto {} z folderu gry.",
         "action.patches_removed_kept": "Usunięto {}, zostawiono {} (zmienione po instalacji).",
         "action.nothing_to_remove": "Nie ma czego usuwać.",
-        "action.blocked_signed":
-            "{} kopiuje klasy gry, a ten build Project Zomboid ma podpisany jar: "
-            "gra się z nimi nie uruchomi. Nic nie zostało skopiowane.",
-        "action.blocked_signed_many":
-            "Nie zainstalowano, gra nie uruchomiłaby się: {}.",
         "error.update_checksum": "Pobrany plik nie zgadza się sumą kontrolną wydania.",
         "error.update_broken": "Pobrany plik nie jest działającą wersją PZ Updater.",
 
@@ -347,6 +352,12 @@ STRINGS = {
             "podpisanym jarem gry.\n\n"
             "Muszą zniknąć {} plik(i):\n\n{}\n\n"
             "Zostaną przeniesione do folderu aplikacji, nie usunięte.",
+        "dialog.signed.title": "Mod kopiuje klasy do podpisanego jara gry",
+        "dialog.signed.body":
+            "{} kopiuje pliki .class do folderu gry, a ten build Project Zomboid ma "
+            "podpisany projectzomboid.jar. Gra z nimi zwykle nie wstaje.\n\n"
+            "Zainstalować mimo to? Jeśli po instalacji gra przestanie się uruchamiać, "
+            "aplikacja zaproponuje wycofanie plików — nic nie ginie.",
         "dialog.app_update.title": "Dostępny PZ Updater {}",
         "dialog.app_update.body":
             "Masz wersję {}, najnowsze wydanie to {}. Aktualizacja pobiera nowy exe "
