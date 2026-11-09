@@ -42,7 +42,7 @@ PROFILE_URL = "https://steamcommunity.com/id/AdamowY/"
 
 # Bumped by hand with every release. The running exe compares itself against the
 # newest GitHub release, so the number here has to match the tag of the build.
-APP_VERSION = "1.1.3"
+APP_VERSION = "1.1.0"
 RELEASES_API = "https://api.github.com/repos/Adamowyy/PZUpdater/releases/latest"
 APP_EXE_NAME = "PZUpdater.exe"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION}"
@@ -1785,24 +1785,46 @@ class PZUpdaterApp:
     def _bind_click(self, widget, key):
         widget.bind("<Button-1>", lambda e: self._select(key))
 
-    def _fill_bits(self, key, card, bits):
-        """One label per detail, so the hint about the builds can carry a colour."""
-        if card.get("bits") == bits:
+    def _fill_bits(self, key, card, bits, note=None):
+        """Short details on the first line, a longer hint on its own line below.
+
+        Everything used to share one line, so a hint like "the game has a signed
+        jar" ran past the card and was cut off. The hint now gets the full width
+        and wraps instead.
+        """
+        if card.get("bits") == (bits, note):
             return
         frame = card["sub"]
         for child in frame.winfo_children():
             child.destroy()
+        line = ctk.CTkFrame(frame, fg_color="transparent")
+        line.pack(anchor="w", fill="x")
         for index, (text, colour) in enumerate(bits):
             if index:
-                separator = ctk.CTkLabel(frame, text="·", font=self.f_muted,
+                separator = ctk.CTkLabel(line, text="·", font=self.f_muted,
                                          text_color=SUBTLE, anchor="w")
                 separator.pack(side="left", padx=6)
                 self._bind_click(separator, key)
-            label = ctk.CTkLabel(frame, text=text, font=self.f_muted,
+            label = ctk.CTkLabel(line, text=text, font=self.f_muted,
                                  text_color=colour, anchor="w")
             label.pack(side="left")
             self._bind_click(label, key)
-        card["bits"] = bits
+        if note:
+            text, colour = note
+            hint = ctk.CTkLabel(frame, text=text, font=self.f_muted,
+                                text_color=colour, anchor="w", justify="left",
+                                wraplength=self._note_wrap())
+            hint.pack(anchor="w", fill="x", pady=(2, 0))
+            self._bind_click(hint, key)
+        card["bits"] = (bits, note)
+
+    def _note_wrap(self):
+        """Width for the hint line - the window is wide, the card is not."""
+        try:
+            width = self.root.winfo_width()
+        except Exception:      # noqa: BLE001 - before the window is mapped
+            width = 1240
+        return max(300, min(900, width - 700))
 
     # -- mod state ------------------------------------------------------------
     def _installed_files(self, mod):
@@ -2217,14 +2239,16 @@ class PZUpdaterApp:
             if preview is not None and not info["switch"]:
                 bits.append((self.t("detail.newer_than_beta") if self._is_hidden(preview)
                              else self.t("detail.beta_offered"), ALERT))
+            # The file hint is long, so it goes on its own line and wraps
+            note = None
             if info["switch"]:
                 pass      # the badge already names the build that is in the game
             elif info["files_note"]:
-                bits.append((info["files_note"], ALERT if info["signed_warning"] else MUTED))
+                note = (info["files_note"], ALERT if info["signed_warning"] else MUTED)
             elif ws:
-                bits.append((self._files_note(info), MUTED))
+                note = (self._files_note(info), MUTED)
             else:
-                bits.append((self.t("status.no_subscription"), MUTED))
+                note = (self.t("status.no_subscription"), MUTED)
 
             card = self._cards[key]
             display = self._display_name(m)
@@ -2237,7 +2261,7 @@ class PZUpdaterApp:
                 tc, bc = BADGE.get(tag, BADGE[""])
                 card["name"].configure(text_color=TEXT)
             card["badge"].configure(text=status, text_color=tc, fg_color=bc)
-            self._fill_bits(key, card, bits)
+            self._fill_bits(key, card, bits, note)
 
             if info["pending"]:
                 if info["pending"] == "repair":

@@ -37,6 +37,13 @@ class TestTables(unittest.TestCase):
         for language in i18n.LANGUAGES:
             self.assertIn(language, i18n.FLAGS)
 
+    def test_the_note_under_a_mod_stays_short(self):
+        """Notki pod modami są doklejane do wiersza - długie się nie mieściły."""
+        for language in i18n.LANGUAGES:
+            for key, text in i18n.STRINGS[language].items():
+                if key.startswith(("detail.", "status.")):
+                    self.assertLessEqual(len(text), 50, msg=f"{language}/{key}: {text}")
+
 
 class TestTranslator(unittest.TestCase):
     def test_returns_text_for_the_selected_language(self):

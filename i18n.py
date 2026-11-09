@@ -63,7 +63,7 @@ STRINGS = {
         "detail.workshop": "Workshop {}",
         "detail.steam": "Steam: {}",
         "detail.version": "version {}",
-        "detail.fix_obsolete": "newer ZombieBuddy already replaces the Extensions jar",
+        "detail.fix_obsolete": "newer ZombieBuddy replaces Extensions",
         "detail.beta_offered": "newer BETA",
         "detail.newer_than_beta": "newer than the BETA",
         "detail.files_ok": "✓ in game ({})",
@@ -71,10 +71,10 @@ STRINGS = {
         "detail.files_partial": "⚠ {} of {} files match",
         "detail.files_unknown": "no file data",
         "detail.build": "game version {}",
-        "detail.patch_wait": "the mod has no files for this version yet",
-        "detail.patch_start_game": "start the game once so the app can read your version",
-        "detail.repair_files": "{} in the game folder that the game refuses to load",
-        "detail.signed_jar": "the game's jar is signed now, so copied classes break the start",
+        "detail.patch_wait": "no files for this game version yet",
+        "detail.patch_start_game": "start the game once so the app can see its version",
+        "detail.repair_files": "{} in the game folder to take out",
+        "detail.signed_jar": "signed game jar - copied classes break the start",
 
         # progress overlay
         "overlay.title": "Checking for updates…",
@@ -116,12 +116,9 @@ STRINGS = {
         "msg.repaired_folder": "The files are kept in: {}",
         "msg.repair_failed": "⚠ Nothing could be moved, close the game and try again.",
         "msg.repair_after_install":
-            "⚠ {} in the game folder now clash with the signed jar — Repair the "
-            "game takes them back out.",
+            "⚠ {} clash with the signed jar — use Repair the game.",
         "msg.installing_signed": "Installing into a game with a signed jar: {}",
-        "msg.update_rolled_back":
-            "Update to {} did not start, so the previous build ({}) is back. "
-            "The downloaded file was kept in the update folder.",
+        "msg.update_rolled_back": "Update to {} did not start, back on {}.",
         "msg.app_version": "PZ Updater {}",
         "msg.app_update_found": "PZ Updater {} is available.",
         "msg.app_update_check_failed": "Could not check for a new app version: {}",
@@ -255,7 +252,7 @@ STRINGS = {
         "detail.workshop": "Workshop {}",
         "detail.steam": "Steam: {}",
         "detail.version": "wersja {}",
-        "detail.fix_obsolete": "nowszy ZombieBuddy już zastępuje jar Extensions",
+        "detail.fix_obsolete": "nowszy ZombieBuddy zastępuje Extensions",
         "detail.beta_offered": "nowsza BETA",
         "detail.newer_than_beta": "nowsza niż BETA",
         "detail.files_ok": "✓ w grze ({})",
@@ -263,10 +260,10 @@ STRINGS = {
         "detail.files_partial": "⚠ w grze {} z {} plików zgodnych",
         "detail.files_unknown": "brak danych o plikach",
         "detail.build": "wersja gry {}",
-        "detail.patch_wait": "mod nie ma jeszcze plików dla tej wersji",
-        "detail.patch_start_game": "uruchom grę raz, żeby apka poznała Twoją wersję",
-        "detail.repair_files": "{} w folderze gry, których gra nie wczyta",
-        "detail.signed_jar": "gra ma teraz podpisany jar, więc kopiowane klasy psują start",
+        "detail.patch_wait": "brak plików dla tej wersji gry",
+        "detail.patch_start_game": "uruchom grę raz, by poznać jej wersję",
+        "detail.repair_files": "{} w folderze gry do wycofania",
+        "detail.signed_jar": "podpisany jar gry - kopiowane klasy psują start",
 
         # progress overlay
         "overlay.title": "Sprawdzam aktualizacje…",
@@ -308,12 +305,9 @@ STRINGS = {
         "msg.repaired_folder": "Pliki zachowane w: {}",
         "msg.repair_failed": "⚠ Nie udało się nic przenieść, zamknij grę i spróbuj ponownie.",
         "msg.repair_after_install":
-            "⚠ {} w folderze gry koliduje teraz z podpisanym jarem — „Napraw grę” "
-            "je wycofa.",
+            "⚠ {} koliduje z jarem — kliknij „Napraw grę”.",
         "msg.installing_signed": "Instaluję mimo podpisanego jara gry: {}",
-        "msg.update_rolled_back":
-            "Aktualizacja do {} nie wystartowała, więc wróciła poprzednia wersja "
-            "({}). Pobrany plik został w folderze aktualizacji.",
+        "msg.update_rolled_back": "Aktualizacja do {} nie wystartowała, wróciła wersja {}.",
         "msg.app_version": "PZ Updater {}",
         "msg.app_update_found": "Dostępna jest nowa wersja PZ Updater {}.",
         "msg.app_update_check_failed": "Nie udało się sprawdzić nowej wersji aplikacji: {}",
