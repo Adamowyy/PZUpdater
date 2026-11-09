@@ -46,6 +46,39 @@ add the ones that can be automated safely.
 - Checks whether the mod files are actually in the game folder, not just
   subscribed.
 - Copies what needs copying — per mod, or all of it at once.
+- Knows when a game update made those files unusable, and offers one click to
+  repair the game folder.
+- Updates itself: a new release of the app is downloaded and swapped in place.
+
+## When the game stops starting after an update
+
+Build **42.22** ships a *signed* `projectzomboid.jar`. The game folder is the
+first entry of the game's classpath, so a `.class` file left there by a mod wins
+over the one inside the jar — and the JVM refuses to mix signed and unsigned
+classes of one package:
+
+```
+java.lang.SecurityException: class "zombie.iso.IsoWorld"'s signer information
+does not match signer information of other classes in the same package
+```
+
+The game then exits after a few seconds with an **empty `console.txt`** and an
+empty `Logs/*/DebugLog.txt`: the exception is raised inside the game's own
+logger, so nothing is ever written. Nothing in Event Viewer either — it looks
+like the game silently refuses to start.
+
+The app checks the game folder against the jar on every start:
+
+- a mod that left such classes behind gets a red **Blocks the game from
+  starting** badge and a **Repair the game** button;
+- if one is there, the repair dialog comes up on its own, once per game build;
+- repaired files are **moved**, not deleted, into `%LOCALAPPDATA%\PZUpdater\removed\<date>\`
+  (the exact folder is written to the log).
+
+While the jar stays signed, mods that copy classes into the game folder cannot
+be installed at all; the app says so instead of writing them and bricking the
+start. As soon as a game build ships an unsigned jar again, those rows go back
+to normal and can be installed as before.
 
 ## Supported mods
 
@@ -101,6 +134,16 @@ installed and current one below it, and a mod that is not on this machine at all
 (nothing subscribed, nothing installed) at the bottom. Rows in the same state keep
 the order of the mod list / the order you added them in.
 
+## Updates of the app itself
+
+On start the app asks GitHub for the newest release. When there is one, a
+**↑ Update to x.y.z** button appears in the header (and the offer is shown once;
+"Later" keeps it to the button). Updating downloads `PZUpdater.exe` from the
+release, checks its SHA-256 when the release carries one, closes the window and
+lets a small script swap the file and start the new build — Windows does not
+allow overwriting a running exe. Settings and mod state are untouched, they live
+in `%APPDATA%\PZUpdater\state.json`.
+
 ## Languages
 
 The interface ships in English and Polish. Switch with the flags in the top-right
@@ -143,8 +186,8 @@ Tests:
 .buildenv/Scripts/python.exe -m unittest discover -s tests -v
 ```
 
-They cover file comparison, the mod registry and the translations, and need
-neither Steam nor the game.
+They cover file comparison, the mod registry, the signed-jar repair, the app's
+own updater and the translations, and need neither Steam nor the game.
 
 Adding a mod: only mods that need manual file work belong on the list. The format
 is described in [CONTRIBUTING.md](CONTRIBUTING.md#adding-a-mod) — most entries are

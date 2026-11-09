@@ -538,10 +538,17 @@ class TestDeprecatedRow(unittest.TestCase):
     class App:
         """Tyle aplikacji, ile trzeba, żeby zbudować stan wiersza bez okna."""
 
+        _repair_state = pz.PZUpdaterApp._repair_state
+        _repair_files = pz.PZUpdaterApp._repair_files
+        _blocked_by_signature = pz.PZUpdaterApp._blocked_by_signature
+        _manifests = pz.PZUpdaterApp._manifests
+
         def __init__(self, obsolete):
             self.obsolete = obsolete
             self.paths = {"workshop": {"zombiebuddy_fix": "ws"}}
             self.steam_info = {}
+            self.state = {"mods": {}}
+            self._repair = None
 
         def t(self, key, *args):
             return key
@@ -560,6 +567,9 @@ class TestDeprecatedRow(unittest.TestCase):
 
         def _is_obsolete(self, mod):
             return self.obsolete
+
+        def _visible_mods(self):
+            return list(pz.UPDATABLE_MODS)
 
     FIX = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
 
@@ -600,12 +610,17 @@ def headless_app(game, ws_map, state=None):
         _files_note = pz.PZUpdaterApp._files_note
         _mod_name = pz.PZUpdaterApp._mod_name
         _saved_ts = pz.PZUpdaterApp._saved_ts
+        _repair_state = pz.PZUpdaterApp._repair_state
+        _repair_files = pz.PZUpdaterApp._repair_files
+        _blocked_by_signature = pz.PZUpdaterApp._blocked_by_signature
+        _manifests = pz.PZUpdaterApp._manifests
 
         def __init__(self):
             self.paths = {"game_dir": game, "workshop": ws_map}
             self.steam_info = {}
             self.state = state or {"mods": {}}
             self._sources = pz.accepted_sources(pz.UPDATABLE_MODS, ws_map)
+            self._repair = None
 
         def t(self, key, *args):
             return key

@@ -37,6 +37,10 @@ STRINGS = {
         "btn.close": "Close",
         "btn.copy": "Copy",
         "btn.switch_to": "Switch to {}",
+        "btn.repair": "Repair the game",
+        "btn.app_update": "↑ Update to {}",
+        "btn.update_now": "Update now",
+        "btn.later": "Later",
 
         # status badges
         "status.not_subscribed": "Not subscribed",
@@ -52,6 +56,8 @@ STRINGS = {
         "status.no_patch_build": "No files for game version {}",
         "status.build_unknown": "Game version unknown, start the game once",
         "status.build_unverified": "Start the game once to confirm the version",
+        "status.repair_needed": "Blocks the game from starting",
+        "status.signed_jar": "Cannot be used with this game build",
 
         # card details line
         "detail.workshop": "Workshop {}",
@@ -67,6 +73,8 @@ STRINGS = {
         "detail.build": "game version {}",
         "detail.patch_wait": "the mod has no files for this version yet",
         "detail.patch_start_game": "start the game once so the app can read your version",
+        "detail.repair_files": "{} in the game folder that the game refuses to load",
+        "detail.signed_jar": "the game's jar is signed now, so copied classes break the start",
 
         # progress overlay
         "overlay.title": "Checking for updates…",
@@ -102,6 +110,17 @@ STRINGS = {
         "msg.game_dir": "Game: {}",
         "msg.removing_one": "Removing: {}…",
         "msg.remove_failed": "Removal failed: {}",
+        "msg.repairing": "Repairing the game folder…",
+        "msg.repaired": "✓ Moved {} out of the game folder — start the game again.",
+        "msg.repaired_kept": "Moved {}, could not move {}.",
+        "msg.repaired_folder": "The files are kept in: {}",
+        "msg.repair_failed": "⚠ Nothing could be moved, close the game and try again.",
+        "msg.app_version": "PZ Updater {}",
+        "msg.app_update_found": "PZ Updater {} is available.",
+        "msg.app_update_check_failed": "Could not check for a new app version: {}",
+        "msg.app_update_downloading": "Downloading PZ Updater {}…",
+        "msg.app_update_ready": "PZ Updater {} downloaded — restarting.",
+        "msg.update_source_run": "The app updates itself only in the .exe build.",
 
         # action results
         "action.jar_missing": "{} not found in the mod folder.",
@@ -121,6 +140,13 @@ STRINGS = {
         "action.patches_removed": "Removed {} from the game folder.",
         "action.patches_removed_kept": "Removed {}, kept {} (changed after the install).",
         "action.nothing_to_remove": "Nothing to remove.",
+        "action.blocked_signed":
+            "{} copies game classes, and this build of Project Zomboid ships a "
+            "signed jar: the game will not start with them. Nothing was copied.",
+        "action.blocked_signed_many":
+            "Not installed, the game would not start afterwards: {}.",
+        "error.update_checksum": "The downloaded file does not match the release checksum.",
+        "error.update_broken": "The downloaded file is not a working PZ Updater build.",
 
         # errors
         "error.steam_no_data": "Steam returned no data for workshop item {}.",
@@ -131,6 +157,18 @@ STRINGS = {
         "dialog.add.placeholder": "e.g. 3807349984",
         "dialog.remove.title": "Uninstall",
         "dialog.remove.body": "Remove the files of \"{}\" ({}) from the game folder?",
+        "dialog.repair.title": "The game will not start",
+        "dialog.repair.body":
+            "Project Zomboid stops the moment it starts, with an empty log, when "
+            "classes from a mod are left in the game folder: the JVM refuses to mix "
+            "them with the signed game jar.\n\n"
+            "These {} file(s) have to go:\n\n{}\n\n"
+            "They will be moved to the app's own folder, not deleted.",
+        "dialog.app_update.title": "PZ Updater {} is available",
+        "dialog.app_update.body":
+            "You have {}, the newest release is {}. Updating downloads the new exe "
+            "and swaps it in place — the app closes for a second and starts again.\n\n"
+            "Your mods and settings stay untouched.",
         "toast.title": "Something went wrong",
         "console.title": "Log — PZ Updater",
         "console.heading": "Errors and events",
@@ -182,6 +220,10 @@ STRINGS = {
         "btn.close": "Zamknij",
         "btn.copy": "Kopiuj",
         "btn.switch_to": "Zmień na {}",
+        "btn.repair": "Napraw grę",
+        "btn.app_update": "↑ Aktualizuj do {}",
+        "btn.update_now": "Aktualizuj teraz",
+        "btn.later": "Później",
 
         # status badges
         "status.not_subscribed": "Brak subskrypcji",
@@ -197,6 +239,8 @@ STRINGS = {
         "status.no_patch_build": "Brak plików dla wersji {}",
         "status.build_unknown": "Nie znam wersji gry, uruchom grę raz",
         "status.build_unverified": "Uruchom grę raz, żeby potwierdzić wersję",
+        "status.repair_needed": "Blokuje uruchomienie gry",
+        "status.signed_jar": "Niezgodne z tym buildem gry",
 
         # card details line
         "detail.workshop": "Workshop {}",
@@ -212,6 +256,8 @@ STRINGS = {
         "detail.build": "wersja gry {}",
         "detail.patch_wait": "mod nie ma jeszcze plików dla tej wersji",
         "detail.patch_start_game": "uruchom grę raz, żeby apka poznała Twoją wersję",
+        "detail.repair_files": "{} w folderze gry, których gra nie wczyta",
+        "detail.signed_jar": "gra ma teraz podpisany jar, więc kopiowane klasy psują start",
 
         # progress overlay
         "overlay.title": "Sprawdzam aktualizacje…",
@@ -247,6 +293,17 @@ STRINGS = {
         "msg.game_dir": "Gra: {}",
         "msg.removing_one": "Usuwam: {}…",
         "msg.remove_failed": "Błąd usuwania: {}",
+        "msg.repairing": "Naprawiam folder gry…",
+        "msg.repaired": "✓ Przeniesiono z folderu gry {} — uruchom grę ponownie.",
+        "msg.repaired_kept": "Przeniesiono {}, nie udało się ruszyć {}.",
+        "msg.repaired_folder": "Pliki zachowane w: {}",
+        "msg.repair_failed": "⚠ Nie udało się nic przenieść, zamknij grę i spróbuj ponownie.",
+        "msg.app_version": "PZ Updater {}",
+        "msg.app_update_found": "Dostępna jest nowa wersja PZ Updater {}.",
+        "msg.app_update_check_failed": "Nie udało się sprawdzić nowej wersji aplikacji: {}",
+        "msg.app_update_downloading": "Pobieram PZ Updater {}…",
+        "msg.app_update_ready": "Pobrano PZ Updater {} — uruchamiam ponownie.",
+        "msg.update_source_run": "Aplikacja aktualizuje się tylko w wersji .exe.",
 
         # action results
         "action.jar_missing": "Nie znaleziono {} w folderze moda.",
@@ -266,6 +323,13 @@ STRINGS = {
         "action.patches_removed": "Usunięto {} z folderu gry.",
         "action.patches_removed_kept": "Usunięto {}, zostawiono {} (zmienione po instalacji).",
         "action.nothing_to_remove": "Nie ma czego usuwać.",
+        "action.blocked_signed":
+            "{} kopiuje klasy gry, a ten build Project Zomboid ma podpisany jar: "
+            "gra się z nimi nie uruchomi. Nic nie zostało skopiowane.",
+        "action.blocked_signed_many":
+            "Nie zainstalowano, gra nie uruchomiłaby się: {}.",
+        "error.update_checksum": "Pobrany plik nie zgadza się sumą kontrolną wydania.",
+        "error.update_broken": "Pobrany plik nie jest działającą wersją PZ Updater.",
 
         # errors
         "error.steam_no_data": "Steam nie zwrócił danych dla warsztatu {}.",
@@ -276,6 +340,19 @@ STRINGS = {
         "dialog.add.placeholder": "np. 3807349984",
         "dialog.remove.title": "Odinstaluj",
         "dialog.remove.body": "Usunąć pliki moda \"{}\" ({}) z folderu gry?",
+        "dialog.repair.title": "Gra się nie uruchomi",
+        "dialog.repair.body":
+            "Project Zomboid wyłącza się zaraz po starcie, z pustym logiem, gdy w "
+            "folderze gry zostają klasy z moda: JVM nie pozwala mieszać ich z "
+            "podpisanym jarem gry.\n\n"
+            "Muszą zniknąć {} plik(i):\n\n{}\n\n"
+            "Zostaną przeniesione do folderu aplikacji, nie usunięte.",
+        "dialog.app_update.title": "Dostępny PZ Updater {}",
+        "dialog.app_update.body":
+            "Masz wersję {}, najnowsze wydanie to {}. Aktualizacja pobiera nowy exe "
+            "i podmienia go w miejscu — aplikacja zamyka się na chwilę i uruchamia "
+            "ponownie.\n\n"
+            "Twoje mody i ustawienia zostają bez zmian.",
         "toast.title": "⚠ Wystąpił błąd",
         "console.title": "Log — PZ Updater",
         "console.heading": "Log błędów i zdarzeń",

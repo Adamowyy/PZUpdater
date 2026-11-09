@@ -19,7 +19,7 @@ Common fields:
 | `key` | short identifier, used in the code only |
 | `name` | name shown in the window (the workshop title) |
 | `workshop_id` | the numbers from the workshop URL |
-| `type` | `files_copy`, `jar_replace` or `folder_copy` |
+| `type` | `files_copy`, `jar_replace`, `folder_copy` or `class_patch` |
 | `help` | one sentence per language, see `i18n.LANGUAGES` |
 
 Then the fields for the chosen type:
@@ -75,6 +75,12 @@ Then the fields for the chosen type:
 # the app refuses to install when it cannot read that build or check it against
 # projectzomboid.jar. What an install wrote is recorded, so the card can offer
 # Uninstall and only those files are deleted again.
+#
+# Since the game ships a signed jar (42.22+), classes copied into the game folder
+# make the JVM refuse the whole package and the game stops starting. Such an entry
+# is blocked while the jar is signed, and any file it left behind shows up as
+# "Blocks the game from starting" with a Repair button - see `patch_conflicts`
+# and `game_repair` in pzupdater.py.
 {
     "key": "some_patches",
     "name": "Some Mod - Optional Engine Patches",
@@ -112,6 +118,19 @@ if a translation forgets an argument, and if a key is missing from a table.
 ```bash
 .buildenv/Scripts/python.exe -m unittest discover -s tests -v
 ```
+
+## Releasing
+
+The app updates itself from the newest GitHub release, so a release is not just
+a build — it is what every installed copy compares itself against:
+
+1. Bump `APP_VERSION` in `pzupdater.py`; it must equal the tag without the `v`.
+2. Build the exe (see README → Development).
+3. `sha256sum dist/PZUpdater.exe > PZUpdater.exe.sha256` and attach **both**
+   files to the release. Without the hash file the app still updates, it just
+   cannot verify the download.
+4. Tag `v<APP_VERSION>` and publish. A release without the `PZUpdater.exe` asset
+   is ignored by older copies.
 
 ## Reporting a bug
 

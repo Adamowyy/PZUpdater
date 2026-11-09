@@ -27,6 +27,7 @@ class Headless(pz.PZUpdaterApp):
         self.manual_mods = state["manual_mods"]
         self.t = i18n.Translator(state["language"])
         self._selected = None
+        self._repair = None
         self._sources = pz.accepted_sources(self._visible_mods(), paths["workshop"])
 
 

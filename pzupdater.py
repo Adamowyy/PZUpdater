@@ -9,7 +9,9 @@ import queue
 import shutil
 import filecmp
 import hashlib
+import subprocess
 import sys
+import tempfile
 import time
 import threading
 import datetime
@@ -37,6 +39,13 @@ APP_ID = "108600"  # Project Zomboid (Steam app id)
 STEAM_API = "https://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/"
 WORKSHOP_URL = "https://steamcommunity.com/sharedfiles/filedetails/?id={}"
 PROFILE_URL = "https://steamcommunity.com/id/AdamowY/"
+
+# Bumped by hand with every release. The running exe compares itself against the
+# newest GitHub release, so the number here has to match the tag of the build.
+APP_VERSION = "1.1.0"
+RELEASES_API = "https://api.github.com/repos/Adamowyy/PZUpdater/releases/latest"
+APP_EXE_NAME = "PZUpdater.exe"
+USER_AGENT = f"{APP_NAME}/{APP_VERSION}"
 
 
 # Only mods that need a manual install belong here, not a plain subscription.
@@ -116,9 +125,13 @@ UPDATABLE_MODS = [
         "target_rel": "zombie",
         "help": {
             "en": "Copies the 'zombie' folder from the newest version "
-                  "(for example 42.21.0) into the game folder.",
+                  "(for example 42.21.0) into the game folder. Builds of the game "
+                  "with a signed jar do not accept copied classes: the app says so "
+                  "and offers to take the old ones out again.",
             "pl": "Kopiuje folder 'zombie' z najnowszej wersji (np. 42.21.0) do "
-                  "folderu gry.",
+                  "folderu gry. Buildy gry z podpisanym jarem nie przyjmują "
+                  "kopiowanych klas: aplikacja to zgłasza i proponuje usunięcie "
+                  "starych plików.",
         },
     },
     {
@@ -131,16 +144,18 @@ UPDATABLE_MODS = [
         "copy_name": "zombie",
         "target_rel": "zombie",
         "help": {
-            "en": "Copies Tempo's three optional files into the game folder. They are "
-                  "made for one game version each, so the app takes the ones matching "
-                  "yours. If the game gets a newer version and the mod has no files for "
-                  "it yet, nothing is copied: remove the old ones with Uninstall and "
-                  "wait for the mod to update.",
-            "pl": "Kopiuje trzy opcjonalne pliki Tempo do folderu gry. Są zrobione pod "
-                  "konkretną wersję gry, więc aplikacja wgrywa tylko te zgodne z Twoją. "
-                  "Gdy gra dostanie nowszą wersję i mod nie będzie miał dla niej "
-                  "plików, nic nie zostanie wgrane: usuń stare przyciskiem Odinstaluj i "
-                  "poczekaj na aktualizację moda.",
+            "en": "Copies Tempo's optional files into the game folder. They are made "
+                  "for one game version each, so the app takes the ones matching "
+                  "yours. If the game gets a newer version and the mod has no files "
+                  "for it yet, nothing is copied. Builds with a signed game jar "
+                  "refuse copied classes altogether, and the app then offers to take "
+                  "the old ones out.",
+            "pl": "Kopiuje opcjonalne pliki Tempo do folderu gry. Są zrobione pod "
+                  "konkretną wersję gry, więc aplikacja wgrywa tylko te zgodne z "
+                  "Twoją. Gdy gra dostanie nowszą wersję i mod nie będzie miał dla "
+                  "niej plików, nic nie zostanie wgrane. Buildy z podpisanym jarem "
+                  "w ogóle nie przyjmują kopiowanych klas — aplikacja proponuje "
+                  "wtedy usunięcie starych plików.",
         },
     },
 ]
@@ -393,6 +408,10 @@ def load_state():
         state = {}
     state.setdefault("mods", {})
     state.setdefault("notices", {})
+    # jar revision the repair warning was shown for, so it is not raised twice
+    state.setdefault("repair_shown_for", None)
+    # release the user said "later" to, so a newer one is offered again
+    state.setdefault("app_update_skipped", None)
     if "manual_mods" not in state:
         state["manual_mods"] = list(DEFAULT_MANUAL_MODS)
     if state.get("language") not in i18n.LANGUAGES:
@@ -407,6 +426,11 @@ def save_state(state):
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(state, f, ensure_ascii=False, indent=2)
     os.replace(tmp, p)
+
+
+def removed_dir():
+    """Where repaired files are put aside, next to the state file."""
+    return os.path.join(os.path.dirname(state_path()), "removed")
 
 
 # Update actions
@@ -562,6 +586,8 @@ WATCHED_GONE = 4       # not subscribed any more, so nothing to compare against
 
 def supported_rank(info):
     """Place of a mod from `UPDATABLE_MODS` in the left column."""
+    if info.get("pending") == "repair":
+        return (LEFT_TODO, -1)          # a game that does not start comes first
     if info["pending"]:
         return (LEFT_TODO, {"info": TODO_WRONG, "new": TODO_NEWER,
                             "gray": TODO_NOT_COPIED}.get(info["tag"], 3))
@@ -713,6 +739,230 @@ def game_build(game_dir):
     return out
 
 
+# Signed game jar: classes copied next to it stop the game from starting
+#
+# The game folder is the first entry of the classpath (".;projectzomboid.jar"),
+# so a .class file lying there wins over the one inside the jar. Since build
+# 42.22 the jar is signed (META-INF/PROJECTZ.SF + .EC), and the JVM refuses to
+# mix signed and unsigned classes of one package:
+#   java.lang.SecurityException: class "zombie.iso.IsoWorld"'s signer
+#   information does not match signer information of other classes in the
+#   same package
+# The game dies about five seconds in, inside its own logger, so console.txt and
+# every log stay empty - nothing to read, nothing to guess from. Anything that
+# writes classes into the game folder has to be kept out while the jar is
+# signed, and whatever is already there has to be taken out again.
+
+# Markers of that signature, lower case, inside the jar.
+JAR_SIGNATURE_MARKERS = ("meta-inf/projectz.sf", "meta-inf/projectz.ec")
+
+# Folders that never hold game classes; skipped so a scan of the game folder
+# stays a fraction of a second.
+GAME_SCAN_SKIP = {"jre64", "media", "natives", "license", "launcher",
+                  "reshade-shaders", "steamapps", "workshop", "zomboid", "mods",
+                  "installer_backups", "backups", "docs"}
+
+JAR_INFO_CACHE = {}
+
+
+def game_jar_path(game_dir):
+    return os.path.join(game_dir, "projectzomboid.jar") if game_dir else None
+
+
+def jar_info(game_dir):
+    """{"signed", "classes", "packages", "top"} of the game jar, or None.
+
+    "classes" holds every class path in lower case, "packages" every package
+    directory that holds a class, "top" the first segment of those paths (the
+    package roots - "zombie", "org", "net"...). All lower case: Windows compares
+    paths that way anyway.
+    """
+    jar = game_jar_path(game_dir)
+    if not jar:
+        return None
+    key = (os.path.normcase(jar), _stat_sig(jar))
+    if key in JAR_INFO_CACHE:
+        return JAR_INFO_CACHE[key]
+    info = None
+    try:
+        with zipfile.ZipFile(jar) as z:
+            names = z.namelist()
+    except (OSError, zipfile.BadZipFile, RuntimeError):
+        names = None
+    if names is not None:
+        classes, packages, top = set(), set(), set()
+        signed = False
+        for name in names:
+            low = name.replace("\\", "/").lower()
+            if low in JAR_SIGNATURE_MARKERS:
+                signed = True
+            elif low.endswith(".class"):
+                classes.add(low)
+                package = low.rsplit("/", 1)[0] if "/" in low else ""
+                if package:
+                    packages.add(package)
+                    top.add(package.split("/", 1)[0])
+        info = {"signed": signed, "classes": classes, "packages": packages,
+                "top": top}
+    JAR_INFO_CACHE[key] = info
+    return info
+
+
+def loose_classes(game_dir):
+    """.class files in the game folder, as paths relative to it (forward slashes)."""
+    out = []
+    if not game_dir or not os.path.isdir(game_dir):
+        return out
+    for dirpath, dirs, files in os.walk(game_dir):
+        dirs[:] = [d for d in dirs if d.lower() not in GAME_SCAN_SKIP]
+        for fn in files:
+            if fn.lower().endswith(".class"):
+                rel = os.path.relpath(os.path.join(dirpath, fn), game_dir)
+                out.append(rel.replace("\\", "/"))
+    return out
+
+
+def clashing_classes(game_dir, rels=None):
+    """Loose classes the JVM will not accept next to the game jar, sorted.
+
+    A file that is also inside the jar is always a clash: it silently replaces
+    the game's own class. While the jar is signed, any class from a package the
+    jar also uses breaks the whole package, so those count too.
+    """
+    info = jar_info(game_dir)
+    if not info:
+        return []
+    out = []
+    for rel in (loose_classes(game_dir) if rels is None else rels):
+        low = rel.replace("\\", "/").lower()
+        if not low.endswith(".class"):
+            continue
+        if low in info["classes"]:
+            out.append(rel)
+            continue
+        if info["signed"]:
+            package = low.rsplit("/", 1)[0] if "/" in low else ""
+            if package and package in info["packages"]:
+                out.append(rel)
+    return sorted(out)
+
+
+def patch_conflicts(game_dir, mod):
+    """True when this mod would write classes the JVM refuses next to the jar.
+
+    True for every mod that copies a folder whose name is a package root of the
+    jar ("zombie") while the jar is signed - the version does not matter there,
+    the signer does. With an unsigned jar only the same file path clashes, which
+    is what the app has always allowed.
+    """
+    info = jar_info(game_dir)
+    if not info:
+        return False
+    rel = (mod.get("target_rel") or mod.get("copy_name") or "").strip("/\\")
+    if not rel:
+        return False
+    low = rel.replace("\\", "/").lower()
+    if low in info["classes"] or low in info["packages"]:
+        return True
+    return bool(info["signed"] and low.split("/", 1)[0] in info["top"])
+
+
+def mod_owned_paths(mod, ws):
+    """Lower-case paths this mod would write below its target folder.
+
+    Tempo and Better Car Physics both copy into the same "zombie" folder, so the
+    folder alone cannot say whose file a stray class is. The classes each mod
+    ships can: they are read from every version folder the mod carries, because
+    the one for the current build may be missing exactly when the game updated.
+    """
+    out = set()
+    if not ws or not os.path.isdir(ws):
+        return out
+
+    def add(src):
+        for rel in dir_files(src):
+            out.add(rel.replace("\\", "/").lower())
+
+    if mod["type"] == "class_patch":
+        root = os.path.join(ws, mod["src_dir"])
+        if os.path.isdir(root):
+            for version in os.listdir(root):
+                src = os.path.join(root, version, mod["copy_name"])
+                if os.path.isdir(src):
+                    add(src)
+    elif mod["type"] == "folder_copy":
+        version = newest_version_folder(os.path.join(ws, mod["manual_dir"]))
+        src = os.path.join(version, mod["copy_name"]) if version else None
+        if src and os.path.isdir(src):
+            add(src)
+    return out
+
+
+def game_repair(game_dir, mods, workshop_map=None, manifests=None):
+    """What stops the game from starting: {"signed", "files", "by_mod", "unknown"}.
+
+    `by_mod` maps a mod key to the files that mod left in the game folder and
+    which the JVM now refuses, `unknown` lists files no registered mod claims -
+    they were put there by hand or by a mod the app does not know.
+
+    Who owns a file is decided in this order: the manifest of a recorded install,
+    then the mod that actually ships a class of that name, then the first mod
+    that copies into that folder.
+    """
+    info = jar_info(game_dir)
+    files = clashing_classes(game_dir)
+    workshop_map = workshop_map or {}
+    manifests = manifests or {}
+    claims = []      # [(prefix, key, shipped paths)] in registry order
+    for m in mods:
+        rel = (m.get("target_rel") or m.get("copy_name") or "").strip("/\\")
+        if not rel:
+            continue
+        claims.append((rel.replace("\\", "/").lower() + "/", m["key"],
+                       mod_owned_paths(m, workshop_map.get(m["key"]))))
+
+    by_mod, unknown = {}, []
+    for rel in files:
+        low = rel.lower()
+        owner = manifests.get(low) or manifests.get(rel)
+        if not owner:
+            candidates = [c for c in claims if low.startswith(c[0])]
+            exact = [c for c in candidates if low[len(c[0]):] in c[2]]
+            owner = (exact or candidates or [(None, None, None)])[0][1]
+        if owner:
+            by_mod.setdefault(owner, []).append(rel)
+        else:
+            unknown.append(rel)
+    return {"signed": bool(info and info["signed"]), "files": files,
+            "by_mod": by_mod, "unknown": unknown}
+
+
+def backup_taken_classes(game_dir, rels, stamp=None):
+    """Moves the given classes out of the game folder into the app's own folder.
+
+    Nothing is deleted outright: the files land in the app folder under
+    %LOCALAPPDATA%, in a subfolder named after the moment of the repair, and
+    that path is logged: a wrong guess stays recoverable.
+    """
+    stamp = stamp or datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    target_root = os.path.join(removed_dir(), stamp)
+    moved, kept = [], []
+    for rel in rels:
+        src = os.path.join(game_dir, *rel.split("/"))
+        if not os.path.isfile(src):
+            continue
+        dst = os.path.join(target_root, *rel.split("/"))
+        try:
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.move(src, dst)
+        except OSError:
+            kept.append(rel)
+            continue
+        moved.append(rel)
+        _drop_empty_dirs(os.path.dirname(src), game_dir)
+    return moved, kept, target_root if moved else None
+
+
 def class_patch_folder(mod, ws, build):
     """Folder holding the patches compiled for this game build, or None."""
     if not ws or not build:
@@ -862,6 +1112,141 @@ def mod_install_state(mod, game, workshop_map, mods=None, sources=None):
     return INSTALL_OK, ok, total
 
 
+# Updating the app itself
+#
+# Everybody runs a single exe, so a new release has to reach them without a
+# trip to GitHub. The app asks the releases API for the newest tag, downloads
+# the asset next to itself and lets a small batch file swap the file once this
+# process is gone - Windows will not let a running exe be overwritten.
+
+def app_frozen():
+    """True inside the PyInstaller exe, False when running from the sources."""
+    return bool(getattr(sys, "frozen", False))
+
+
+def app_exe_path():
+    """The file that has to be replaced: the exe, or the script in a source run."""
+    return os.path.abspath(sys.executable if app_frozen() else __file__)
+
+
+def update_dir():
+    """Scratch folder for a downloaded release."""
+    base = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
+    return os.path.join(base, "PZUpdater", "update")
+
+
+def parse_release(data, exe_name=APP_EXE_NAME):
+    """{"version", "exe", "sha256"} out of a GitHub release payload, or None.
+
+    Only a release that carries a downloadable exe is usable; anything else
+    (a draft, a notes-only tag) is ignored rather than shown as an update.
+    """
+    version = str((data or {}).get("tag_name") or "").strip().lstrip("vV")
+    if not version_key(version):
+        return None
+    assets = {}
+    for asset in (data or {}).get("assets") or []:
+        name = str(asset.get("name") or "").strip().lower()
+        url = asset.get("browser_download_url")
+        if name and url:
+            assets[name] = url
+    exe = assets.get(exe_name.lower())
+    if not exe:
+        return None
+    return {"version": version, "exe": exe,
+            "sha256": assets.get(exe_name.lower() + ".sha256")}
+
+
+def fetch_latest_release(timeout=15):
+    """Newest published release, or None when GitHub has nothing usable."""
+    req = urllib.request.Request(RELEASES_API, headers={
+        "Accept": "application/vnd.github+json", "User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return parse_release(json.loads(r.read().decode("utf-8")))
+
+
+def _fetch_text(url, timeout=30):
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read().decode("utf-8", "replace")
+
+
+def download_release_asset(url, dest, sha256_url=None, timeout=120):
+    """Fetches an asset to `dest`, checking the hash when the release has one."""
+    os.makedirs(os.path.dirname(dest), exist_ok=True)
+    tmp = dest + ".part"
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r, open(tmp, "wb") as f:
+            shutil.copyfileobj(r, f)
+        if sha256_url:
+            expected = (_fetch_text(sha256_url).split() or [""])[0].strip().lower()
+            if len(expected) == 64 and file_sha256(tmp) != expected:
+                raise UpdaterError("error.update_checksum")
+        with open(tmp, "rb") as f:
+            if f.read(2) != b"MZ":       # not a Windows executable
+                raise UpdaterError("error.update_broken")
+        os.replace(tmp, dest)
+    finally:
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+    return dest
+
+
+def download_app_update(release):
+    """Downloads the release exe into the app's update folder, returns its path."""
+    version = re.sub(r"[^0-9A-Za-z._-]", "", release.get("version") or "")
+    if not version:
+        raise UpdaterError("error.update_broken")
+    dest = os.path.join(update_dir(), f"PZUpdater-{version}.exe")
+    return download_release_asset(release["exe"], dest, release.get("sha256"))
+
+
+# Windows keeps a lock on a running exe, so the swap happens in a batch file
+# that waits for this process to disappear, moves the new file over the old one
+# and starts it again. The wait is on the PID: tasklist does not see processes
+# from a windowless cmd, and waiting on the image name would also catch an
+# unrelated copy of the app. A second move 2 s later covers a file the system
+# still holds for a moment; if even that fails, the old exe starts again.
+NEWLINE_CRLF = chr(13) + chr(10)      # a batch file needs real CRLF, whatever this file uses
+
+SELF_UPDATE_SCRIPT = NEWLINE_CRLF.join([
+    "@echo off",
+    "setlocal",
+    "set \"TARGET={target}\"",
+    "set \"NEW={new}\"",
+    ":wait",
+    "powershell -NoProfile -WindowStyle Hidden -Command \"Wait-Process -Id {pid} -ErrorAction SilentlyContinue\" 2>nul",
+    "move /y \"%NEW%\" \"%TARGET%\" >nul",
+    "if errorlevel 1 (",
+    "  timeout /t 2 /nobreak >nul",
+    "  move /y \"%NEW%\" \"%TARGET%\" >nul",
+    ")",
+    "start \"\" \"%TARGET%\"",
+    "",
+])
+
+
+def launch_self_update(new_exe, target=None):
+    """Starts the swap script for a new exe; the caller has to exit afterwards."""
+    target = os.path.abspath(target or app_exe_path())
+    script = SELF_UPDATE_SCRIPT.format(target=target, new=os.path.abspath(new_exe),
+                                       pid=os.getpid())
+    os.makedirs(update_dir(), exist_ok=True)
+    bat = os.path.join(update_dir(), "apply_update.bat")
+    # newline="" keeps the CRLF that is already in the script
+    with open(bat, "w", encoding="utf-8", newline="") as f:
+        f.write(script)
+    flags = 0
+    if os.name == "nt":
+        flags = 0x00000008 | 0x00000200    # DETACHED_PROCESS | NEW_PROCESS_GROUP
+    subprocess.Popen(["cmd.exe", "/c", bat], creationflags=flags, close_fds=True)
+    return bat
+
+
 # Theme
 
 BG = "#141518"
@@ -933,6 +1318,8 @@ class PZUpdaterApp:
         self._console = None
         self._overlay_visible = False
         self._overlay_shown_at = 0.0
+        self._repair = None       # cached {"signed", "files", "by_mod", "unknown"}
+        self._app_update = None   # newer release offered by GitHub, if any
 
         self.paths = self._detect()
         self._sources = {}       # {target path: acceptable sources}, refreshed per check
@@ -940,6 +1327,7 @@ class PZUpdaterApp:
 
         self._log("INFO", self.t("msg.start", self.paths["steam_root"]))
         self._log("INFO", self.t("msg.game_dir", self.paths["game_dir"]))
+        self._log("INFO", self.t("msg.app_version", APP_VERSION))
 
         self._build_ui()
         self._populate()
@@ -949,6 +1337,7 @@ class PZUpdaterApp:
         self.check_updates(silent=True)
         self.root.after(1500, self._reveal)   # fallback when the check drags on
         self.root.after(250, self._reveal)    # ...but usually reveal the curtain at once
+        self.root.after(1200, self._startup_checks)
 
     # -- detection ------------------------------------------------------------
     def _detect(self):
@@ -1040,7 +1429,7 @@ class PZUpdaterApp:
 
     # -- UI -------------------------------------------------------------------
     def _build_ui(self):
-        self.root.title(f"{APP_NAME} — Project Zomboid")
+        self.root.title(f"{APP_NAME} {APP_VERSION} — Project Zomboid")
         self.root.geometry("1240x730")
         self.root.minsize(1000, 600)
         self.root.configure(fg_color=BG)
@@ -1096,6 +1485,15 @@ class PZUpdaterApp:
         sig.bind("<Button-1>", lambda e: self._open_url(PROFILE_URL))
         sig.bind("<Enter>", lambda e: sig.configure(text_color=ACCENT_HOVER))
         sig.bind("<Leave>", lambda e: sig.configure(text_color=ACCENT))
+
+        # Appears only when GitHub has a newer build of the app itself
+        self.btn_app_update = ctk.CTkButton(
+            top, text="", width=104, height=26, fg_color=ACCENT_HOVER,
+            hover_color="#1e40af", text_color="#ffffff", corner_radius=7,
+            border_width=1, border_color=ACCENT, font=self.f_muted,
+            command=self._start_app_update)
+        self.btn_app_update.pack(side="right", padx=(0, 8))
+        self.btn_app_update.pack_forget()
 
         ctk.CTkLabel(head, text=self.t("app.tagline"), font=self.f_sub,
                      text_color=MUTED).pack(anchor="w", pady=(2, 0))
@@ -1382,13 +1780,59 @@ class PZUpdaterApp:
         note = self.t(mod["name_note"]) if mod.get("name_note") else ""
         return f"{self._mod_name(mod)} {note}".strip() if note else self._mod_name(mod)
 
+    # -- game repair ----------------------------------------------------------
+    def _repair_state(self):
+        """{"signed", "files", "by_mod", "unknown"} for the game folder, cached."""
+        if self._repair is None:
+            self._repair = game_repair(self.paths.get("game_dir"), self._visible_mods(),
+                                       self.paths.get("workshop") or {}, self._manifests())
+        return self._repair
+
+    def _manifests(self):
+        """{path in the game folder: mod key} for the installs the app recorded."""
+        out = {}
+        by_id = {m["workshop_id"]: m["key"] for m in self._visible_mods()}
+        for workshop_id, entry in (self.state.get("mods") or {}).items():
+            key = by_id.get(workshop_id)
+            if not key:
+                continue
+            for rel in (entry.get("files") or {}):
+                out[rel] = key
+        return out
+
+    def _invalidate_repair(self):
+        self._repair = None
+
+    def _repair_files(self, mod):
+        """Classes of this mod that are in the game folder and stop it starting."""
+        return self._repair_state()["by_mod"].get(mod["key"]) or []
+
+    def _blocked_by_signature(self, mod):
+        """True when this mod may not write anything into the game folder now."""
+        return patch_conflicts(self.paths.get("game_dir"), mod)
+
     def _status_info(self, mod):
         """Badge text, file state and the action available for one mod."""
         ws = self.paths["workshop"].get(mod["key"])
         install, ok, total = self._install_state(mod)
         info = {"install": install, "ok": ok, "total": total, "pending": None,
                 "muted": False, "status": "", "tag": "", "files_note": None,
-                "switch": False, "switch_name": "", "name": self._mod_name(mod)}
+                "switch": False, "switch_name": "", "repair": 0,
+                "name": self._mod_name(mod)}
+        # Files of this mod that are in the game folder and which the JVM refuses:
+        # the game does not start at all, so nothing else about this row matters.
+        strays = self._repair_files(mod)
+        if strays:
+            info.update(status=self.t("status.repair_needed"), tag="err",
+                        pending="repair", repair=len(strays))
+            return info
+        if self._blocked_by_signature(mod):
+            # The jar is signed, so every class copied next to it breaks a whole
+            # package. Correct version or not, this mod cannot be installed until
+            # the game ships an unsigned jar again or the author changes approach.
+            info.update(status=self.t("status.signed_jar"), tag="old",
+                        files_note=self.t("detail.signed_jar"))
+            return info
         if not ws:
             info.update(status=self.t("status.not_subscribed"), tag="gray", muted=True)
             return info
@@ -1447,8 +1891,8 @@ class PZUpdaterApp:
         for m in self._visible_mods():
             info = self._status_info(m)
             # A switch has its own button: the main one must never turn the user
-            # over to the other build on its own.
-            if info["pending"] and not info["switch"]:
+            # over to the other build on its own. A repair is not an install.
+            if info["pending"] in ("install", "update") and not info["switch"]:
                 pending[m["key"]] = info["pending"]
         return pending
 
@@ -1458,7 +1902,7 @@ class PZUpdaterApp:
         visible = self._visible_mods()
         for m in visible:
             info = self._status_info(m)
-            if not (info["pending"] and not info["switch"]
+            if not (info["pending"] in ("install", "update") and not info["switch"]
                     and info["install"] in (INSTALL_OK, INSTALL_PARTIAL)):
                 continue
             if len(build_family(m, visible)) > 1 and self._installed_build(m) is not m:
@@ -1707,6 +2151,9 @@ class PZUpdaterApp:
                     bits.append((self.t("detail.build", build), MUTED))
             if self._is_obsolete(m):
                 bits.append((self.t("detail.fix_obsolete"), MUTED))
+            if info["repair"]:
+                bits.append((self.t("detail.repair_files",
+                                    self.t.files(info["repair"])), ALERT))
             # Which build is ahead, so a BETA row appearing is never a guess
             preview = self._preview_of(m)
             if preview is not None and not info["switch"]:
@@ -1735,13 +2182,20 @@ class PZUpdaterApp:
             self._fill_bits(key, card, bits)
 
             if info["pending"]:
-                if info["switch"]:
-                    label = self.t("btn.switch_to", info["switch_name"])
-                elif info["install"] == INSTALL_MISSING:
-                    label = self.t("btn.install")
+                if info["pending"] == "repair":
+                    card["action"].configure(text=self.t("btn.repair"),
+                                             fg_color=DANGER, hover_color="#b91c1c",
+                                             command=lambda k=key: self.do_repair(k))
                 else:
-                    label = self.t("btn.update")
-                card["action"].configure(text=label)
+                    if info["switch"]:
+                        label = self.t("btn.switch_to", info["switch_name"])
+                    elif info["install"] == INSTALL_MISSING:
+                        label = self.t("btn.install")
+                    else:
+                        label = self.t("btn.update")
+                    card["action"].configure(text=label, fg_color=ACCENT,
+                                             hover_color=ACCENT_HOVER,
+                                             command=lambda k=key: self._update_one(k))
                 card["action"].grid()
             else:
                 card["action"].grid_remove()
@@ -1907,7 +2361,194 @@ class PZUpdaterApp:
         else:
             self._log("ERROR", self.t("msg.remove_failed", msg))
             self.set_status_key("msg.remove_failed", msg)
+        self._invalidate_repair()
         self.refresh_statuses()
+
+    # -- repairing the game folder --------------------------------------------
+    def do_repair(self, key=None):
+        """Moves the classes that stop the game from starting out of the game folder.
+
+        With `key` only that mod's files, without it everything that clashes. The
+        files are put aside in the app's own folder rather than deleted, so the
+        repair can be undone by hand.
+        """
+        if self._busy or not self.paths["game_dir"]:
+            return
+        self._invalidate_repair()
+        mod = next((m for m in self._visible_mods() if m["key"] == key), None) if key else None
+        files = self._repair_files(mod) if mod else list(self._repair_state()["files"])
+        if not files:
+            self.set_status_key("action.nothing_to_remove")
+            self.refresh_statuses()
+            return
+        listed = "\n".join(files[:10]) + ("\n…" if len(files) > 10 else "")
+        if not messagebox.askyesno(self.t("dialog.repair.title"),
+                                   self.t("dialog.repair.body", len(files), listed)):
+            return
+
+        self._busy = True
+        self._refresh_buttons()
+        self.set_status_key("msg.repairing")
+        moved, kept, folder = backup_taken_classes(self.paths["game_dir"], files)
+        # The recorded manifests no longer describe the game folder
+        mods = self.state.get("mods", {})
+        for entry in mods.values():
+            recorded = entry.get("files") or {}
+            for rel in moved:
+                recorded.pop(rel, None)
+            if "files" in entry and not recorded:
+                entry.pop("files", None)
+        save_state(self.state)
+
+        self._busy = False
+        self._invalidate_repair()
+        self._refresh_buttons()
+        if moved:
+            if kept:
+                message = self.t("msg.repaired_kept", self.t.files(len(moved)),
+                                 self.t.files(len(kept)))
+            else:
+                message = self.t("msg.repaired", self.t.files(len(moved)))
+            self._log("INFO", message)
+            if folder:
+                self._log("INFO", self.t("msg.repaired_folder", folder))
+            self.set_status(message)
+        else:
+            self._log("ERROR", self.t("msg.repair_failed"))
+            self.set_status_key("msg.repair_failed")
+        self.refresh_statuses()
+
+    def _startup_checks(self):
+        """Once the window is up: does the game start, and is this app current?"""
+        self._invalidate_repair()
+        self.refresh_statuses()
+        self._maybe_warn_repair()
+        self._check_app_update()
+
+    def _maybe_warn_repair(self):
+        """Raises the repair dialog once per game build, when something blocks it."""
+        state = self._repair_state()
+        if not state["files"]:
+            return
+        build = game_build(self.paths.get("game_dir"))
+        token = build.get("jar_revision") or build.get("build") or "unknown"
+        if self.state.get("repair_shown_for") == token:
+            return
+        self.state["repair_shown_for"] = token
+        save_state(self.state)
+        self._show_repair_notice(state)
+
+    def _show_repair_notice(self, state):
+        files = state["files"]
+        listed = "\n".join(files[:10]) + ("\n…" if len(files) > 10 else "")
+        dlg, btns = self._notice_shell(
+            self.t("dialog.repair.title"),
+            self.t("dialog.repair.body", len(files), listed),
+            window_title=self.t("dialog.repair.title"), width=620, height=380)
+        ctk.CTkButton(btns, text=self.t("btn.repair"), width=150, height=34,
+                      fg_color=DANGER, hover_color="#b91c1c", text_color="#ffffff",
+                      corner_radius=8, font=self.f_small,
+                      command=lambda: (dlg.destroy(), self.do_repair())).pack(side="left")
+
+    # -- updating the app itself ----------------------------------------------
+    def _check_app_update(self):
+        """Asks GitHub for a newer build of the app; silent when it cannot tell."""
+        def work():
+            return fetch_latest_release()
+
+        def on_done(result):
+            if isinstance(result, tuple) and result[0] == "error":
+                self._log("INFO", self.t("msg.app_update_check_failed",
+                                         self._error_text(result[1])))
+                return
+            release = result
+            if not release or not newer_version(release["version"], APP_VERSION):
+                return
+            self._app_update = release
+            self._log("INFO", self.t("msg.app_update_found", release["version"]))
+            self._show_app_update_button()
+            if self.state.get("app_update_skipped") != release["version"]:
+                self._show_app_update_notice()
+
+        self._run_async(work, on_done)
+
+    def _show_app_update_button(self):
+        if not self._app_update:
+            return
+        try:
+            self.btn_app_update.configure(
+                text=self.t("btn.app_update", self._app_update["version"]))
+            self.btn_app_update.pack(side="right", padx=(0, 8))
+        except Exception:      # the header may be gone during a UI rebuild
+            pass
+
+    def _show_app_update_notice(self):
+        release = self._app_update
+        if not release:
+            return
+        dlg, btns = self._notice_shell(
+            self.t("dialog.app_update.title", release["version"]),
+            self.t("dialog.app_update.body", APP_VERSION, release["version"]),
+            window_title=f"{APP_NAME} {release['version']}", width=560, height=260)
+        ctk.CTkButton(btns, text=self.t("btn.update_now"), width=160, height=34,
+                      fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=ON_ACCENT,
+                      corner_radius=8, font=self.f_small,
+                      command=lambda: (dlg.destroy(), self._start_app_update())
+                      ).pack(side="left")
+        ctk.CTkButton(btns, text=self.t("btn.later"), width=110, height=34,
+                      fg_color=CARD_SEL, hover_color=BORDER, text_color=TEXT,
+                      corner_radius=8, font=self.f_muted,
+                      command=lambda: (dlg.destroy(), self._skip_app_update())
+                      ).pack(side="right", padx=(8, 0))
+
+    def _skip_app_update(self):
+        """Remembers the "later" so the same release is not offered again."""
+        if not self._app_update:
+            return
+        self.state["app_update_skipped"] = self._app_update["version"]
+        save_state(self.state)
+
+    def _start_app_update(self):
+        """Downloads the release and hands the file swap to a detached script."""
+        release = self._app_update
+        if not release or self._busy:
+            return
+        if not app_frozen():
+            self.set_status_key("msg.update_source_run")
+            return
+        self._busy = True
+        self._refresh_buttons()
+        label = self.t("msg.app_update_downloading", release["version"])
+        self.set_status(label)
+        self._show_overlay(label)
+
+        def work():
+            return download_app_update(release)
+
+        def on_done(result):
+            self._busy = False
+            self._refresh_buttons()
+            self._hide_overlay()
+            if isinstance(result, tuple) and result[0] == "error":
+                message = self._error_text(result[1])
+                self.set_status_key("msg.update_failed", message)
+                self._error(self.t("msg.update_failed", message))
+                return
+            self.set_status_key("msg.app_update_ready", release["version"])
+            self._log("INFO", self.t("msg.app_update_ready", release["version"]))
+            self.root.after(400, lambda: self._quit_for_update(result))
+
+        self._run_async(work, on_done)
+
+    def _quit_for_update(self, new_exe):
+        """Starts the swapper and closes the window so the exe can be replaced."""
+        try:
+            launch_self_update(new_exe)
+        except Exception as e:  # noqa: BLE001 - the app must survive a bad update
+            self._error(self.t("msg.update_failed", self._error_text(e)))
+            return
+        self._dismiss_toast()
+        self.root.after(150, self.root.destroy)
 
     def do_update(self, mods=None):
         """Updates the given mods; without an argument only the ones already in
@@ -1923,6 +2564,15 @@ class PZUpdaterApp:
             mods = self._installed_for_update()
         mods = [m for m in mods
                 if self.paths["workshop"].get(m["key"]) and not self._is_obsolete(m)]
+        # A mod that copies classes cannot be installed while the game jar is
+        # signed: the game would not start afterwards. Say so instead of doing it.
+        blocked = [m for m in mods if patch_conflicts(self.paths["game_dir"], m)]
+        if blocked:
+            for m in blocked:
+                self._log("ERROR", self.t("action.blocked_signed", self._mod_name(m)))
+            self._error(self.t("action.blocked_signed_many",
+                               ", ".join(self._mod_name(m) for m in blocked)))
+            mods = [m for m in mods if m not in blocked]
         if not mods:
             self.set_status_key("msg.nothing_to_update")
             return
@@ -1947,7 +2597,12 @@ class PZUpdaterApp:
                     time.sleep(DEBUG_SLOW_SECONDS)
                 try:
                     handler = ACTION_HANDLERS.get(m["type"])
-                    if handler is None:
+                    if patch_conflicts(self.paths["game_dir"], m):
+                        # belt and braces: the row may have been built before the
+                        # game was updated
+                        ok, msg, meta = False, self.t("action.blocked_signed",
+                                                      self._mod_name(m)), {}
+                    elif handler is None:
                         ok, msg, meta = False, self.t("action.unknown_type"), {}
                     else:
                         prev = self.state.get("mods", {}).get(m["workshop_id"]) or {}
@@ -1978,6 +2633,7 @@ class PZUpdaterApp:
                 self._error(self.t("msg.update_failed", message))
                 return
             self._refresh_workshop_dirs()
+            self._invalidate_repair()
             ok_word, err_word = self.t("msg.result_ok"), self.t("msg.result_error")
             lines = [f"{ok_word if ok else err_word} — {name}: {msg}" for name, ok, msg in result]
             failed = [f"{name}: {msg}" for name, ok, msg in result if not ok]
