@@ -53,9 +53,9 @@ STRINGS = {
         "status.pending": "…",
         "status.subscribed": "✓ subscribed",
         "status.no_subscription": "not subscribed",
-        "status.no_patch_build": "No files for game version {}",
-        "status.build_unknown": "Game version unknown, start the game once",
-        "status.build_unverified": "Start the game once to confirm the version",
+        "status.no_patch_build": "No build for this game",
+        "status.build_unknown": "Can't tell which game version this is",
+        "status.build_unverified": "Start the game once after the update",
         "status.repair_needed": "Blocks the game from starting",
         "status.signed_jar": "Cannot be used with this game build",
 
@@ -63,7 +63,7 @@ STRINGS = {
         "detail.workshop": "Workshop {}",
         "detail.steam": "Steam: {}",
         "detail.version": "version {}",
-        "detail.fix_obsolete": "newer ZombieBuddy replaces Extensions",
+        "detail.fix_obsolete": "not needed, ZombieBuddy does the same",
         "detail.beta_offered": "newer BETA",
         "detail.newer_than_beta": "newer than the BETA",
         "detail.files_ok": "✓ in game ({})",
@@ -71,10 +71,10 @@ STRINGS = {
         "detail.files_partial": "⚠ {} of {} files match",
         "detail.files_unknown": "no file data",
         "detail.build": "game version {}",
-        "detail.patch_wait": "no files for this game version yet",
-        "detail.patch_start_game": "start the game once so the app can see its version",
-        "detail.repair_files": "{} in the game folder to take out",
-        "detail.signed_jar": "signed game jar - copied classes break the start",
+        "detail.patch_wait": "no build for your game from the author yet",
+        "detail.patch_start_game": "start the game once so the app can see it",
+        "detail.repair_files": "{} file(s) stopping the game from starting",
+        "detail.signed_jar": "warning: this may stop the game starting",
 
         # progress overlay
         "overlay.title": "Checking for updates…",
@@ -115,9 +115,8 @@ STRINGS = {
         "msg.repaired_kept": "Moved {}, could not move {}.",
         "msg.repaired_folder": "The files are kept in: {}",
         "msg.repair_failed": "⚠ Nothing could be moved, close the game and try again.",
-        "msg.repair_after_install":
-            "⚠ {} clash with the signed jar — use Repair the game.",
-        "msg.installing_signed": "Installing into a game with a signed jar: {}",
+        "msg.repair_after_install": "⚠ {} may break the game start — use Repair the game.",
+        "msg.installing_signed": "Installing anyway: {}",
         "msg.update_rolled_back": "Update to {} did not start, back on {}.",
         "msg.app_version": "PZ Updater {}",
         "msg.app_update_found": "PZ Updater {} is available.",
@@ -137,7 +136,7 @@ STRINGS = {
         "action.unknown_type": "Unknown mod type.",
         "action.no_game_build": "Could not tell which game version you have, start the game once.",
         "action.unverified_game_build": "The game was updated and has not been started since, start it once and try again.",
-        "action.no_patch_build": "The mod has no files for game version {} yet, wait for the mod to update.",
+        "action.no_patch_build": "No build from the author for game {} yet.",
         "action.no_patch_files": "The mod's folder is empty.",
         "action.patches_installed": "Copied {} (game version {}).",
         "action.patches_replaced": "Copied {} (game version {}), removed {} of the old files.",
@@ -157,19 +156,9 @@ STRINGS = {
         "dialog.remove.title": "Uninstall",
         "dialog.remove.body": "Remove the files of \"{}\" ({}) from the game folder?",
         "dialog.repair.title": "The game will not start",
-        "dialog.repair.body":
-            "Project Zomboid stops the moment it starts, with an empty log, when "
-            "classes from a mod are left in the game folder: the JVM refuses to mix "
-            "them with the signed game jar.\n\n"
-            "These {} file(s) have to go:\n\n{}\n\n"
-            "They will be moved to the app's own folder, not deleted.",
-        "dialog.signed.title": "This mod copies classes into a signed game jar",
-        "dialog.signed.body":
-            "{} copies .class files into the game folder, and this build of Project "
-            "Zomboid ships a signed projectzomboid.jar. The game usually refuses to "
-            "start with those files in place.\n\n"
-            "Install anyway? If the game stops starting, the app offers to take the "
-            "files back out again — nothing is lost.",
+        "dialog.repair.body": "The game quits right after it starts and leaves no message, because files replaced by a mod are still in its folder.\n\nThese {} file(s) have to go:\n\n{}\n\nThey will be moved to the app's folder, not deleted.",
+        "dialog.signed.title": "This mod can stop the game from starting",
+        "dialog.signed.body": "{} replaces game files. Since the last Project Zomboid update the game may refuse to start with them.\n\nInstall anyway? If the game stops starting, the app offers to undo it — nothing is lost.",
         "dialog.app_update.title": "PZ Updater {} is available",
         "dialog.app_update.body":
             "You have {}, the newest release is {}. Updating downloads the new exe "
@@ -242,9 +231,9 @@ STRINGS = {
         "status.pending": "…",
         "status.subscribed": "✓ subskrybowany",
         "status.no_subscription": "brak subskrypcji",
-        "status.no_patch_build": "Brak plików dla wersji {}",
-        "status.build_unknown": "Nie znam wersji gry, uruchom grę raz",
-        "status.build_unverified": "Uruchom grę raz, żeby potwierdzić wersję",
+        "status.no_patch_build": "Brak wersji pod tę grę",
+        "status.build_unknown": "Nie wiem, jaka to wersja gry",
+        "status.build_unverified": "Uruchom grę raz po aktualizacji",
         "status.repair_needed": "Blokuje uruchomienie gry",
         "status.signed_jar": "Niezgodne z tym buildem gry",
 
@@ -252,7 +241,7 @@ STRINGS = {
         "detail.workshop": "Workshop {}",
         "detail.steam": "Steam: {}",
         "detail.version": "wersja {}",
-        "detail.fix_obsolete": "nowszy ZombieBuddy zastępuje Extensions",
+        "detail.fix_obsolete": "niepotrzebny, ZombieBuddy robi to samo",
         "detail.beta_offered": "nowsza BETA",
         "detail.newer_than_beta": "nowsza niż BETA",
         "detail.files_ok": "✓ w grze ({})",
@@ -260,10 +249,10 @@ STRINGS = {
         "detail.files_partial": "⚠ w grze {} z {} plików zgodnych",
         "detail.files_unknown": "brak danych o plikach",
         "detail.build": "wersja gry {}",
-        "detail.patch_wait": "brak plików dla tej wersji gry",
-        "detail.patch_start_game": "uruchom grę raz, by poznać jej wersję",
-        "detail.repair_files": "{} w folderze gry do wycofania",
-        "detail.signed_jar": "podpisany jar gry - kopiowane klasy psują start",
+        "detail.patch_wait": "autor nie ma jeszcze wersji pod Twoją grę",
+        "detail.patch_start_game": "uruchom grę raz, żeby ją rozpoznać",
+        "detail.repair_files": "{} plik(ów) blokuje start gry",
+        "detail.signed_jar": "ostrzeżenie: gra może się nie uruchomić",
 
         # progress overlay
         "overlay.title": "Sprawdzam aktualizacje…",
@@ -304,9 +293,8 @@ STRINGS = {
         "msg.repaired_kept": "Przeniesiono {}, nie udało się ruszyć {}.",
         "msg.repaired_folder": "Pliki zachowane w: {}",
         "msg.repair_failed": "⚠ Nie udało się nic przenieść, zamknij grę i spróbuj ponownie.",
-        "msg.repair_after_install":
-            "⚠ {} koliduje z jarem — kliknij „Napraw grę”.",
-        "msg.installing_signed": "Instaluję mimo podpisanego jara gry: {}",
+        "msg.repair_after_install": "⚠ {} może zepsuć start gry — kliknij „Napraw grę”.",
+        "msg.installing_signed": "Instaluję mimo ostrzeżenia: {}",
         "msg.update_rolled_back": "Aktualizacja do {} nie wystartowała, wróciła wersja {}.",
         "msg.app_version": "PZ Updater {}",
         "msg.app_update_found": "Dostępna jest nowa wersja PZ Updater {}.",
@@ -326,7 +314,7 @@ STRINGS = {
         "action.unknown_type": "Nieznany typ.",
         "action.no_game_build": "Nie wiem, którą wersję gry masz, uruchom grę raz.",
         "action.unverified_game_build": "Gra została zaktualizowana i od tego czasu nie uruchomiona. Uruchom ją raz i spróbuj ponownie.",
-        "action.no_patch_build": "Mod nie ma jeszcze plików dla wersji gry {}, poczekaj na jego aktualizację.",
+        "action.no_patch_build": "Autor nie ma wersji pod grę {} — poczekaj na update.",
         "action.no_patch_files": "Folder moda jest pusty.",
         "action.patches_installed": "Wgrano {} (wersja gry {}).",
         "action.patches_replaced": "Wgrano {} (wersja gry {}), usunięto {} starych plików.",
@@ -346,18 +334,9 @@ STRINGS = {
         "dialog.remove.title": "Odinstaluj",
         "dialog.remove.body": "Usunąć pliki moda \"{}\" ({}) z folderu gry?",
         "dialog.repair.title": "Gra się nie uruchomi",
-        "dialog.repair.body":
-            "Project Zomboid wyłącza się zaraz po starcie, z pustym logiem, gdy w "
-            "folderze gry zostają klasy z moda: JVM nie pozwala mieszać ich z "
-            "podpisanym jarem gry.\n\n"
-            "Muszą zniknąć {} plik(i):\n\n{}\n\n"
-            "Zostaną przeniesione do folderu aplikacji, nie usunięte.",
-        "dialog.signed.title": "Mod kopiuje klasy do podpisanego jara gry",
-        "dialog.signed.body":
-            "{} kopiuje pliki .class do folderu gry, a ten build Project Zomboid ma "
-            "podpisany projectzomboid.jar. Gra z nimi zwykle nie wstaje.\n\n"
-            "Zainstalować mimo to? Jeśli po instalacji gra przestanie się uruchamiać, "
-            "aplikacja zaproponuje wycofanie plików — nic nie ginie.",
+        "dialog.repair.body": "Gra wyłącza się zaraz po starcie i nie zostawia żadnego komunikatu, bo w jej folderze zostały pliki podmienione przez dodatek.\n\nMuszą zniknąć {} plik(i):\n\n{}\n\nPrzeniosę je do folderu aplikacji — nic nie zginie.",
+        "dialog.signed.title": "Ten dodatek może zepsuć start gry",
+        "dialog.signed.body": "{} podmienia pliki gry. Po ostatniej aktualizacji Project Zomboid może się przez to nie uruchomić.\n\nZainstalować mimo to? Jeśli gra przestanie wstawać, zaproponuję wycofanie tych plików — nic nie zginie.",
         "dialog.app_update.title": "Dostępny PZ Updater {}",
         "dialog.app_update.body":
             "Masz wersję {}, najnowsze wydanie to {}. Aktualizacja pobiera nowy exe "
