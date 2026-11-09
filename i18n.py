@@ -119,6 +119,9 @@ STRINGS = {
             "⚠ {} in the game folder now clash with the signed jar — Repair the "
             "game takes them back out.",
         "msg.installing_signed": "Installing into a game with a signed jar: {}",
+        "msg.update_rolled_back":
+            "Update to {} did not start, so the previous build ({}) is back. "
+            "The downloaded file was kept in the update folder.",
         "msg.app_version": "PZ Updater {}",
         "msg.app_update_found": "PZ Updater {} is available.",
         "msg.app_update_check_failed": "Could not check for a new app version: {}",
@@ -308,6 +311,9 @@ STRINGS = {
             "⚠ {} w folderze gry koliduje teraz z podpisanym jarem — „Napraw grę” "
             "je wycofa.",
         "msg.installing_signed": "Instaluję mimo podpisanego jara gry: {}",
+        "msg.update_rolled_back":
+            "Aktualizacja do {} nie wystartowała, więc wróciła poprzednia wersja "
+            "({}). Pobrany plik został w folderze aktualizacji.",
         "msg.app_version": "PZ Updater {}",
         "msg.app_update_found": "Dostępna jest nowa wersja PZ Updater {}.",
         "msg.app_update_check_failed": "Nie udało się sprawdzić nowej wersji aplikacji: {}",

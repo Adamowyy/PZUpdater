@@ -140,9 +140,15 @@ class TestDownload(ServerCase):
 
 
 class TestSelfUpdateScript(unittest.TestCase):
+    def script(self, **over):
+        values = {"target": "C:/x/PZUpdater.exe", "new": "C:/y/new.exe", "pid": 4242,
+                  "old": "C:/x/PZUpdater.exe.old", "marker": "C:/x/started.txt",
+                  "failed": "C:/x/failed.txt", "version": "9.9.9"}
+        values.update(over)
+        return pz.SELF_UPDATE_SCRIPT.format(**values)
+
     def test_waits_for_the_app_to_close_before_the_swap(self):
-        script = pz.SELF_UPDATE_SCRIPT.format(target="C:/x/PZUpdater.exe",
-                                              new="C:/y/new.exe", pid=4242)
+        script = self.script()
         self.assertIn("Wait-Process -Id 4242", script)
         self.assertIn("move /y", script)
         # podmiana musi być PO oczekiwaniu, inaczej Windows trzyma plik
@@ -156,21 +162,65 @@ class TestSelfUpdateScript(unittest.TestCase):
         self.assertIn("Wait-Process -Id {pid}", pz.SELF_UPDATE_SCRIPT)
 
     def test_the_restarted_build_is_not_told_where_this_one_unpacked(self):
-        """_MEIPASS2 z onefile wskazywałby na folder, który ten build kasuje."""
         self.assertIn('set "_MEIPASS2="', pz.SELF_UPDATE_SCRIPT)
         self.assertIn('set "_PYI_APPLICATION_HOME_DIR="', pz.SELF_UPDATE_SCRIPT)
 
     def test_the_move_is_retried_before_giving_up(self):
         self.assertIn(":move", pz.SELF_UPDATE_SCRIPT)
         self.assertIn("goto move", pz.SELF_UPDATE_SCRIPT)
-        # dopiero po nieudanych próbach rezygnuje - i nie uruchamia niczego
-        script = pz.SELF_UPDATE_SCRIPT
+        script = self.script()
         self.assertLess(script.index("if %tries% geq"), script.index(':start'))
-        self.assertEqual(script.count("start "), 1)
+
+    def test_the_old_exe_is_kept_before_the_swap(self):
+        """Bez kopii nie ma do czego wrócić, gdy nowy build nie wstanie."""
+        script = self.script()
+        self.assertIn('copy /y "%TARGET%" "%OLD%"', script)
+        self.assertIn("PZUpdater.exe.old", script)
+        self.assertLess(script.index('"%OLD%"'), script.index("move /y"))
+
+    def test_a_build_that_does_not_start_is_rolled_back(self):
+        """Dokładnie błąd z 1.1.1: nowy exe wstał i padł na LoadLibrary."""
+        script = self.script()
+        self.assertIn("started.txt", script)
+        self.assertIn("9.9.9", script)          # znacznik musi nieść wersję builda
+        self.assertIn("if not errorlevel 1 goto done", script)
+        # po nieudanym starcie: przywrócenie starego exe, zapis i ponowny start
+        rollback = script[script.index("if not errorlevel 1 goto done"):]
+        self.assertIn('copy /y "%OLD%" "%TARGET%"', rollback)
+        self.assertIn('echo 9.9.9> "%FAILED%"', rollback)
+        self.assertIn('start "" "%TARGET%"', rollback)
 
     def test_the_batch_file_has_real_crlf(self):
         self.assertIn(pz.NEWLINE_CRLF, pz.SELF_UPDATE_SCRIPT)
         self.assertNotIn("\n\n", pz.SELF_UPDATE_SCRIPT.replace(pz.NEWLINE_CRLF, "|"))
+
+
+class TestStartMarker(unittest.TestCase):
+    """Znacznik startu i plik 'nie wstało' - to na nich stoi wycofywanie."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="pzupd_marker_")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self._old = os.environ.get("LOCALAPPDATA")
+        os.environ["LOCALAPPDATA"] = self.tmp
+        self.addCleanup(lambda: os.environ.__setitem__("LOCALAPPDATA", self._old)
+                        if self._old else os.environ.pop("LOCALAPPDATA", None))
+
+    def test_the_marker_carries_the_version(self):
+        pz.write_start_marker()
+        with open(pz.update_marker(), encoding="utf-8") as f:
+            self.assertTrue(f.read().startswith(pz.APP_VERSION))
+
+    def test_a_failed_build_is_reported_once(self):
+        os.makedirs(os.path.dirname(pz.update_failed_file()), exist_ok=True)
+        with open(pz.update_failed_file(), "w", encoding="utf-8") as f:
+            f.write("1.1.2\n")
+        self.assertEqual(pz.update_failed_version(), "1.1.2")
+        pz.clear_update_failed()
+        self.assertIsNone(pz.update_failed_version())
+
+    def test_no_failed_file_means_nothing_to_report(self):
+        self.assertIsNone(pz.update_failed_version())
 
     def test_launch_writes_the_script_and_starts_it_detached(self):
         tmp = tempfile.mkdtemp(prefix="pzupd_launch_")

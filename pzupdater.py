@@ -42,7 +42,7 @@ PROFILE_URL = "https://steamcommunity.com/id/AdamowY/"
 
 # Bumped by hand with every release. The running exe compares itself against the
 # newest GitHub release, so the number here has to match the tag of the build.
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.1.3"
 RELEASES_API = "https://api.github.com/repos/Adamowyy/PZUpdater/releases/latest"
 APP_EXE_NAME = "PZUpdater.exe"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION}"
@@ -1214,32 +1214,81 @@ NEWLINE_CRLF = chr(13) + chr(10)      # a batch file needs real CRLF, whatever t
 
 SELF_UPDATE_SCRIPT = NEWLINE_CRLF.join([
     "@echo off",
-    "setlocal enabledelayedexpansion",
+    "setlocal",
     "set \"TARGET={target}\"",
     "set \"NEW={new}\"",
+    "set \"OLD={old}\"",
+    "set \"MARKER={marker}\"",
+    "set \"FAILED={failed}\"",
     "set \"_MEIPASS2=\"",
     "set \"_PYI_APPLICATION_HOME_DIR=\"",
     "set \"_PYI_PARENT_PROCESS_LEVEL=\"",
     "powershell -NoProfile -WindowStyle Hidden -Command \"Wait-Process -Id {pid} -ErrorAction SilentlyContinue\" 2>nul",
     "set /a tries=0",
     ":move",
-    "move /y \"%NEW%\" \"%TARGET%\" >nul",
+    "copy /y \"%TARGET%\" \"%OLD%\" >nul 2>&1",
+    "move /y \"%NEW%\" \"%TARGET%\" >nul 2>&1",
     "if not errorlevel 1 goto start",
     "set /a tries+=1",
     "if %tries% geq 15 exit /b 1",
     "timeout /t 1 /nobreak >nul",
     "goto move",
     ":start",
+    "del /q \"%MARKER%\" >nul 2>&1",
     "start \"\" \"%TARGET%\"",
+    "powershell -NoProfile -WindowStyle Hidden -Command \"for($i=0;$i -lt 30;$i++){{ Start-Sleep -Milliseconds 500; if(Test-Path '{marker}'){{ if((Get-Content -Raw '{marker}') -match '{version}'){{ exit 0 }} }} }}; exit 1\"",
+    "if not errorlevel 1 goto done",
+    "copy /y \"%OLD%\" \"%TARGET%\" >nul 2>&1",
+    "echo {version}> \"%FAILED%\"",
+    "start \"\" \"%TARGET%\"",
+    ":done",
     "",
 ])
+
+
+def update_marker():
+    """Plik, który aplikacja zapisuje przy starcie - dowód, że build wstał."""
+    return os.path.join(update_dir(), "started.txt")
+
+
+def update_failed_file():
+    """Wersja, która nie wystartowała po podmianie (skrypt podmiany ją zapisuje)."""
+    return os.path.join(update_dir(), "failed.txt")
+
+
+def write_start_marker():
+    """Zapisuje znacznik startu; brak zapisu nie może przewrócić aplikacji."""
+    try:
+        os.makedirs(update_dir(), exist_ok=True)
+        with open(update_marker(), "w", encoding="utf-8") as f:
+            f.write(f"{APP_VERSION} {datetime.datetime.now().isoformat(timespec='seconds')}")
+    except OSError:
+        pass
+
+
+def update_failed_version():
+    """Wersja, która nie wstała po aktualizacji (albo None)."""
+    try:
+        with open(update_failed_file(), encoding="utf-8") as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def clear_update_failed():
+    try:
+        os.remove(update_failed_file())
+    except OSError:
+        pass
 
 
 def launch_self_update(new_exe, target=None):
     """Starts the swap script for a new exe; the caller has to exit afterwards."""
     target = os.path.abspath(target or app_exe_path())
-    script = SELF_UPDATE_SCRIPT.format(target=target, new=os.path.abspath(new_exe),
-                                       pid=os.getpid())
+    script = SELF_UPDATE_SCRIPT.format(
+        target=target, new=os.path.abspath(new_exe), pid=os.getpid(),
+        old=target + ".old", marker=update_marker(), failed=update_failed_file(),
+        version=APP_VERSION)
     os.makedirs(update_dir(), exist_ok=True)
     bat = os.path.join(update_dir(), "apply_update.bat")
     # newline="" keeps the CRLF that is already in the script
@@ -2432,7 +2481,22 @@ class PZUpdaterApp:
         self._invalidate_repair()
         self.refresh_statuses()
         self._maybe_warn_repair()
+        self._maybe_warn_update_failed()
         self._check_app_update()
+
+    def _maybe_warn_update_failed(self):
+        """The swap script put the old exe back - it means the new build did not
+        start. Say so once and stop offering that same build again."""
+        failed = update_failed_version()
+        if not failed:
+            return
+        clear_update_failed()
+        self.state["app_update_skipped"] = failed
+        save_state(self.state)
+        message = self.t("msg.update_rolled_back", failed, APP_VERSION)
+        self._log("WARN", message)
+        self.set_status(message)
+        self._show_toast(message)
 
     def _maybe_warn_repair(self):
         """Raises the repair dialog once per game build, when something blocks it."""
@@ -2965,6 +3029,7 @@ class PZUpdaterApp:
 
 
 def main():
+    write_start_marker()      # dowód dla skryptu podmiany, że ten build wstał
     try:
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
