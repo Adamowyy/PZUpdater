@@ -1321,6 +1321,9 @@ ACCENT_HOVER = "#2563eb"
 ON_ACCENT = "#ffffff"
 DANGER = "#dc2626"      # the uninstall button: the only action that deletes
 ALERT = "#f87171"       # a detail line that has to be read: which build is ahead
+WARN = "#f59e0b"        # an action that may break the game: installing a signed-jar mod
+WARN_HOVER = "#d97706"
+ON_WARN = "#20140a"     # dark text, because white on amber is unreadable
 
 DISABLED_BG = "#3a3d42"
 DISABLED_TEXT = "#6b7280"
@@ -2316,8 +2319,13 @@ class PZUpdaterApp:
                         label = self.t("btn.install")
                     else:
                         label = self.t("btn.update")
-                    card["action"].configure(text=label, fg_color=ACCENT,
-                                             hover_color=ACCENT_HOVER,
+                    # Amber, not blue, when the row warns that copying may stop the
+                    # game from starting: the click still works, but has to look risky.
+                    warn = info["signed_warning"] and not info["switch"]
+                    card["action"].configure(text=label,
+                                             fg_color=WARN if warn else ACCENT,
+                                             hover_color=WARN_HOVER if warn else ACCENT_HOVER,
+                                             text_color=ON_WARN if warn else ON_ACCENT,
                                              command=lambda k=key: self._update_one(k))
                 card["action"].grid()
             else:
