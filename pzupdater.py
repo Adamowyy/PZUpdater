@@ -84,6 +84,8 @@ UPDATABLE_MODS = [
         "visible_if_newer_than": "3619862853",
         "alternative_to": "3619862853",
         "name_note": "mod.beta.note",
+        # Once the release is the newer build the beta is no longer the one to take.
+        "name_note_when_old": "mod.beta.note_plain",
         "help": {
             "en": "Beta of the next ZombieBuddy release. It installs the same two "
                   "files and replaces the release build, so the two can never be "
@@ -2029,8 +2031,22 @@ class PZUpdaterApp:
 
     def _display_name(self, mod):
         """Name for the card: the workshop title plus the remark a mod carries."""
-        note = self.t(mod["name_note"]) if mod.get("name_note") else ""
+        note = self._name_note(mod)
         return f"{self._mod_name(mod)} {note}".strip() if note else self._mod_name(mod)
+
+    def _name_note(self, mod):
+        """The remark after the title.
+
+        A preview row is only recommended while it is the newer build; once the
+        release passes it the word drops off and the note just says what the row
+        is.
+        """
+        key = mod.get("name_note")
+        if not key:
+            return ""
+        if mod.get("name_note_when_old") and self._is_hidden(mod):
+            key = mod["name_note_when_old"]
+        return self.t(key)
 
     # -- game repair ----------------------------------------------------------
     def _repair_state(self):

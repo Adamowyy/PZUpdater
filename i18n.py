@@ -188,6 +188,7 @@ STRINGS = {
 
         # short remarks shown next to a mod's name (mod entry field "name_note")
         "mod.beta.note": "(optional, recommended)",
+        "mod.beta.note_plain": "(optional)",
 
         # unsubscribe the other half of the pair
         "notice.unsub.text":
@@ -373,6 +374,7 @@ STRINGS = {
 
         # short remarks shown next to a mod's name (mod entry field "name_note")
         "mod.beta.note": "(opcjonalny, zalecany)",
+        "mod.beta.note_plain": "(opcjonalny)",
 
         # unsubscribe the other half of the pair
         "notice.unsub.text":
