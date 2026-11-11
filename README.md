@@ -81,7 +81,7 @@ The app checks the game folder against the jar on every start:
 While the jar stays signed, a mod that copies classes of the game's own packages
 cannot work at all: the JVM refuses the mix whatever version the author ships, and
 the game does not start. Its row says **Won't run on this game build** with the
-note *the signed game jar will not load these classes*, and there is no install
+note *warning: this may stop the game starting*, and there is no install
 button — nothing would come of pressing it. Such a mod has to arrive as a jar
 replacement (the way *ZombieBuddy Extensions* does) before it can be used again.
 The app proves the mod's own files against the game's own JRE: put them on the

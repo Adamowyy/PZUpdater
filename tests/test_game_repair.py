@@ -323,7 +323,7 @@ class TestRowStatus(RepairCase):
         self.assertIsNone(info["pending"])          # żadnego przycisku instalacji
         self.assertEqual(info["status"], "status.signed_jar")
         self.assertEqual(info["tag"], "err")
-        self.assertEqual(info["files_note"], "detail.signed_jar_blocked")
+        self.assertEqual(info["files_note"], "detail.signed_jar")
         self.assertTrue(info["signed_warning"])
         self.assertTrue(info["muted"])
 
@@ -382,7 +382,7 @@ class TestRowStatus(RepairCase):
         info = pz.PZUpdaterApp._status_info(app, self.mod("better_car_physics"))
         self.assertTrue(info["signed_warning"])
         self.assertEqual(info["status"], "status.signed_jar")
-        self.assertEqual(info["files_note"], "detail.signed_jar_blocked")
+        self.assertEqual(info["files_note"], "detail.signed_jar")
         self.assertIsNone(info["pending"])
 
     def bcp_versions(self, *versions):

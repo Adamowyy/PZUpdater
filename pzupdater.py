@@ -2087,7 +2087,7 @@ class PZUpdaterApp:
         if self._blocked_by_signature(mod):
             info.update(status=self.t("status.signed_jar"), tag="err", muted=True,
                         pending=None, signed_warning=True,
-                        files_note=self.t("detail.signed_jar_blocked"))
+                        files_note=self.t("detail.signed_jar"))
             return info
         if mod["type"] == "class_patch":
             # Made for one game version each: without the matching files, or without a

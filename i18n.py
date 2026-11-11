@@ -79,7 +79,6 @@ STRINGS = {
         "detail.patch_start_game": "start the game once so the app can see it",
         "detail.repair_files": "{} file(s) stopping the game from starting",
         "detail.signed_jar": "warning: this may stop the game starting",
-        "detail.signed_jar_blocked": "the signed game jar will not load these classes",
 
         # progress overlay
         "overlay.title": "Checking for updates…",
@@ -262,7 +261,6 @@ STRINGS = {
         "detail.patch_wait": "autor nie ma jeszcze wersji pod Twoją grę",
         "detail.patch_start_game": "uruchom grę raz, żeby ją rozpoznać",
         "detail.repair_files": "{} plik(ów) blokuje start gry",
-        "detail.signed_jar_blocked": "podpisany jar gry nie przyjmie tych klas",
         "detail.signed_jar": "ostrzeżenie: gra może się nie uruchomić",
 
         # progress overlay
