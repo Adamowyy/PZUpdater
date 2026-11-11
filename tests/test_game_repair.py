@@ -272,6 +272,7 @@ class TestRowStatus(RepairCase):
         _saved_ts = lambda self, wid: 0
         _log = lambda self, *args: None
         _requirements = pz.PZUpdaterApp._requirements
+        _files_present = pz.PZUpdaterApp._files_present
         _manual_subscribed = pz.PZUpdaterApp._manual_subscribed
 
         def __init__(self, game, workshop, libraries=()):

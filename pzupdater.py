@@ -62,9 +62,9 @@ UPDATABLE_MODS = [
         "files": ["ZombieBuddy.jar", "zbNative.dll"],
         # the loader does nothing until the game starts with the agent launch option
         "notice": "zombiebuddy_launch_options",
-        # ZombieBuddy is what Zed's Better FPS patches the game through, so its
-        # subscription is worth a word on the row.
-        "requires": [{"workshop_id": "3622986450", "name": "Zed's Better FPS"}],
+        # Zed's Better FPS patches the game through ZombieBuddy: while it is
+        # subscribed the row says the loader is required for it.
+        "required_by": [{"workshop_id": "3622986450", "name": "Zed's Better FPS"}],
         "help": {
             "en": "Copies ZombieBuddy.jar and zbNative.dll into the game folder "
                   "(the Java mod loader).",
@@ -106,7 +106,7 @@ UPDATABLE_MODS = [
         "src_dir": os.path.join("mods", "ZombieBuddy", "libs"),
         "files": ["ZombieBuddy.jar", "zbNative.dll"],
         "notice": "zombiebuddy_launch_options",
-        "requires": [{"workshop_id": "3622986450", "name": "Zed's Better FPS"}],
+        "required_by": [{"workshop_id": "3622986450", "name": "Zed's Better FPS"}],
         "visible_if_newer_than": "3619862853",
         "alternative_to": "3619862853",
         "name_note": "mod.beta.note",
@@ -1540,16 +1540,34 @@ class PZUpdaterApp:
     def _manual_subscribed(self, workshop_id):
         return bool(find_workshop_dir(self.paths.get("libraries") or (), workshop_id))
 
-    def _requirements(self, mod):
-        """State of the mods that need this one, for a word on the row.
+    def _files_present(self, mod):
+        """Are the files this mod installs in the game folder? No hashing.
 
-        Zed's Better FPS patches the game through ZombieBuddy, so its
-        subscription is the thing that makes the loader worth installing.
+        The install record answers it for a mod the app installed, and the file
+        names in the registry answer it for the rest - the workshop copy is not
+        needed, which matters for a mod that is no longer subscribed but whose
+        files are still in the game.
+        """
+        game = self.paths.get("game_dir")
+        if not game:
+            return False
+        entry = (self.state.get("mods", {}).get(mod["workshop_id"]) or {}).get("files") or {}
+        rels = list(entry) or list(mod.get("files") or ())
+        return any(os.path.exists(os.path.join(game, rel)) for rel in rels)
+
+    def _requirements(self, mod, present):
+        """How loudly this mod has to say another one needs it.
+
+        Zed's Better FPS patches the game through ZombieBuddy: while it is
+        subscribed and the loader's files are not in the game folder the row says
+        so in red, and with both in place the word fades to grey. Without Better
+        FPS nothing is said at all - nobody needs the loader here.
         """
         out = []
-        for need in mod.get("requires") or ():
-            out.append({"name": need["name"],
-                        "ok": self._manual_subscribed(need["workshop_id"])})
+        for need in mod.get("required_by") or ():
+            if not self._manual_subscribed(need["workshop_id"]):
+                continue
+            out.append({"name": need["name"], "ok": bool(present)})
         return out
 
     # -- language -------------------------------------------------------------
@@ -2079,7 +2097,7 @@ class PZUpdaterApp:
                 "muted": False, "status": "", "tag": "", "files_note": None,
                 "switch": False, "switch_name": "", "repair": 0,
                 "signed_warning": False, "name": self._mod_name(mod),
-                "requires": self._requirements(mod)}
+                "requires": self._requirements(mod, self._files_present(mod))}
         # Files of this mod that are in the game folder and which the JVM refuses:
         # the game does not start at all, so nothing else about this row matters.
         strays = self._repair_files(mod)
@@ -2443,11 +2461,10 @@ class PZUpdaterApp:
             if info["repair"]:
                 bits.append((self.t("detail.repair_files",
                                     self.t.files(info["repair"])), ALERT))
-            # A companion mod this one is only useful with: say whether it is here.
+            # A companion mod needs this one: red while it is missing from the game,
+            # grey once both are here, silent when the companion is not subscribed.
             for need in info["requires"]:
-                bits.append((self.t("detail.requires", need["name"],
-                                    self.t("detail.requires_ok") if need["ok"]
-                                    else self.t("detail.requires_missing")),
+                bits.append((self.t("detail.required_by", need["name"]),
                              MUTED if need["ok"] else ALERT))
             # Which build is ahead, so a BETA row appearing is never a guess
             preview = self._preview_of(m)

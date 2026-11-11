@@ -140,10 +140,11 @@ Two things are worth knowing about the mods that need hand work:
   a file that is byte-identical to one the mod ships is recognised as the mod's own.
   A replaced jar is the one thing that is never taken back — the file sits on top of
   the mod's own jar.
-- **ZombieBuddy rows name Zed's Better FPS.** The loader is what that mod patches
-  the game through, so both ZombieBuddy rows say whether the workshop item is
-  subscribed: `Zed's Better FPS: ✓ subscribed` or `not subscribed`, read from the
-  Steam library the same way the manual mods are.
+- **ZombieBuddy rows say who needs the loader.** Zed's Better FPS patches the game
+  through it, so while that mod is subscribed both ZombieBuddy rows carry
+  *required by Zed's Better FPS* — in red when the loader's files are not in the
+  game folder, grey once both are there. With Better FPS not subscribed the row
+  says nothing about it.
 - **The eye folds a card away.** A mod you do not use can be reduced to its title,
   greyed out, with the date of the author's last update kept on the right, and the
   choice is stored in `state.json`. A folded mod gets no badge and no button, and

@@ -79,9 +79,7 @@ STRINGS = {
         "detail.patch_start_game": "start the game once so the app can see it",
         "detail.repair_files": "{} file(s) stopping the game from starting",
         "detail.signed_jar": "warning: this may stop the game starting",
-        "detail.requires": "{}: {}",
-        "detail.requires_ok": "✓ subscribed",
-        "detail.requires_missing": "not subscribed",
+        "detail.required_by": "required by {}",
 
         # progress overlay
         "overlay.title": "Checking for updates…",
@@ -265,9 +263,7 @@ STRINGS = {
         "detail.patch_start_game": "uruchom grę raz, żeby ją rozpoznać",
         "detail.repair_files": "{} plik(ów) blokuje start gry",
         "detail.signed_jar": "ostrzeżenie: gra może się nie uruchomić",
-        "detail.requires": "{}: {}",
-        "detail.requires_ok": "✓ zasubskrybowany",
-        "detail.requires_missing": "brak subskrypcji",
+        "detail.required_by": "wymagany przez {}",
 
         # progress overlay
         "overlay.title": "Sprawdzam aktualizacje…",
