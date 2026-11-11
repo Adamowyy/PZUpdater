@@ -1080,37 +1080,6 @@ def mod_targets(mod, ws, game=None):
     return []
 
 
-def mod_matches_game(mod, ws, game):
-    """True when the files this mod would install were made for the game in `game`.
-
-    A folder_copy keeps one folder per game release (42.21.0, 42.22.0), a
-    class_patch names the build exactly. Versions are compared by number with the
-    trailing zeros dropped, so files published for 42.22 count for a 42.22.2 game:
-    an author who shipped them after the game update made them for that update.
-    """
-    build = game_build(game)["build"]
-    if not build or not ws:
-        return False
-    if mod["type"] == "class_patch":
-        return class_patch_folder(mod, ws, build) is not None
-    if mod["type"] != "folder_copy":
-        return False
-    version = newest_version_folder(os.path.join(ws, mod["manual_dir"]))
-    if not version:
-        return False
-    made = _version_stem(os.path.basename(version))
-    have = _version_stem(build)
-    return bool(made) and bool(have) and have[:len(made)] == made
-
-
-def _version_stem(name):
-    """Version numbers without the trailing zeros: 42.22.0 -> [42, 22]."""
-    key = version_key(name)
-    while key and key[-1] == 0:
-        key.pop()
-    return key
-
-
 def build_family(mod, mods=None):
     """Every entry that installs the same files as this one, itself included."""
     mods = list(mods) if mods is not None else list(UPDATABLE_MODS)
@@ -1831,6 +1800,12 @@ class PZUpdaterApp:
                                  corner_radius=8, height=22)
             badge.grid(row=0, column=2, sticky="e", padx=(0, 12), pady=(8, 0))
 
+            # What a folded card keeps on the right: when the author last touched
+            # the mod. The badge lives in the same cell and is hidden then.
+            when = ctk.CTkLabel(card, text="", font=self.f_muted, text_color=MUTED)
+            when.grid(row=0, column=2, sticky="e", padx=(0, 12), pady=(8, 0))
+            when.grid_remove()
+
             # A frame rather than one label: the hint about which build is ahead
             # has to stand out, and a label is painted in a single colour.
             sub = ctk.CTkFrame(card, fg_color="transparent")
@@ -1868,7 +1843,7 @@ class PZUpdaterApp:
             card.grid_columnconfigure(1, weight=1)
 
             self._cards[m["key"]] = {"frame": card, "name": name, "badge": badge,
-                                     "sub": sub, "foot": foot, "eye": eye,
+                                     "when": when, "sub": sub, "foot": foot, "eye": eye,
                                      "action": act, "remove": rem, "bits": None}
             for w in (card, name, badge, sub):
                 self._bind_click(w, m["key"])
@@ -2100,12 +2075,12 @@ class PZUpdaterApp:
             return info
         # A signed game jar refuses copied classes, but that is a warning on the
         # row, not a ban: the author may have changed the way the mod works, and
-        # an update has to stay visible and installable either way.
-        # A mod whose files were made for this very game build gets a normal row:
-        # the author shipped them after the game update, and the check right after
-        # the install still takes them back out if the game stops starting.
-        if self._blocked_by_signature(mod) and not mod_matches_game(
-                mod, ws, self.paths["game_dir"]):
+        # an update has to stay visible and installable either way. A mod that
+        # ships classes of the game's own packages breaks the signed jar no matter
+        # which version it is - the JVM refuses the mix, checked with the mod's own
+        # files: "class zombie.core.physics.CarController$GearInfo's signer
+        # information does not match ...".
+        if self._blocked_by_signature(mod):
             info["signed_warning"] = True
             info["files_note"] = self.t("detail.signed_jar")
         if mod["type"] == "class_patch":
@@ -2479,6 +2454,7 @@ class PZUpdaterApp:
                 tc, bc = BADGE.get(tag, BADGE[""])
                 card["name"].configure(text_color=TEXT)
             card["badge"].configure(text=status, text_color=tc, fg_color=bc)
+            card["when"].configure(text=fmt_ts(details["time_updated"]) if details else "—")
             self._fill_bits(key, card, bits, note)
 
             # A folded card keeps its title only, greyed out: the mod is not in
@@ -2498,6 +2474,10 @@ class PZUpdaterApp:
                     card[part].grid_remove()
                 else:
                     card[part].grid()
+            if folded:
+                card["when"].grid()      # the one fact worth keeping on a folded card
+            else:
+                card["when"].grid_remove()
 
             if info["pending"] and not folded:
                 if info["pending"] == "repair":
@@ -2916,11 +2896,8 @@ class PZUpdaterApp:
                 if self.paths["workshop"].get(m["key"]) and not self._is_obsolete(m)]
         # A signed game jar refuses copied classes. The user asked for the mods to
         # be installable anyway, so warn once and then do what was asked - the
-        # repair button and the check after the install cover the damage. Files
-        # the author made for this very game build are taken at their word.
-        blocked = [m for m in mods if patch_conflicts(self.paths["game_dir"], m)
-                   and not mod_matches_game(m, self.paths["workshop"].get(m["key"]),
-                                            self.paths["game_dir"])]
+        # repair button and the check after the install cover the damage.
+        blocked = [m for m in mods if patch_conflicts(self.paths["game_dir"], m)]
         if blocked:
             names = ", ".join(self._mod_name(m) for m in blocked)
             if not messagebox.askyesno(self.t("dialog.signed.title"),
@@ -3014,9 +2991,14 @@ class PZUpdaterApp:
                 for _notice, other in clashing:
                     self._show_unsubscribe_notice(other)
             if fresh["files"]:
-                self._log("WARN", self.t("msg.repair_after_install",
-                                         self.t.files(len(fresh["files"]))))
-                self.root.after(500, lambda s=fresh: self._show_repair_notice(s))
+                # The row itself turns into "blocks the game from starting" with the
+                # repair button, and the status line says what happened. A dialog on
+                # top of the click the user just made reads like a crash report.
+                message = self.t("msg.repair_after_install",
+                                 self.t.files(len(fresh["files"])))
+                self._log("WARN", message)
+                self.set_status(message)
+                self._show_toast(message)
 
         self._run_async(work, on_done)
 

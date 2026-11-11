@@ -81,11 +81,12 @@ The app checks the game folder against the jar on every start:
 While the jar stays signed, mods that copy classes into the game folder keep
 showing their updates and stay installable — but the row warns that this build of
 the game will most likely refuse to start with those files, and pressing install
-asks once before it writes anything. A mod whose files were published for this
-very game build is taken at its word: no warning and a normal install button,
-because the author shipped it for the update you have. The check right after the
-install catches a bad outcome either way: if the files landed badly, the **Repair
-the game** dialog opens at once and takes exactly those files back out. Nothing is
+asks once before it writes anything. The jar refuses the mix of signed and
+unsigned classes of one package whatever version the mod is, so a fresh release
+does not change that: the JVM throws the exception above with the mod's own files.
+The check right after the install turns the row into **Blocks the game from
+starting** with the repair button (and says so in the status line, no dialog on
+top of your click); the repair takes exactly those files back out. Nothing is
 deleted, and nothing is hidden from you.
 
 ## Supported mods
@@ -141,9 +142,10 @@ Two things are worth knowing about the mods that need hand work:
   A replaced jar is the one thing that is never taken back — the file sits on top of
   the mod's own jar.
 - **The eye folds a card away.** A mod you do not use can be reduced to its title,
-  greyed out, and the choice is kept in `state.json`. A folded mod gets no badge and
-  no button, and the main **Update** button leaves it alone; the eye brings the card
-  back in one click.
+  greyed out, with the date of the author's last update kept on the right, and the
+  choice is stored in `state.json`. A folded mod gets no badge and no button, and
+  the main **Update** button leaves it alone; the eye brings the card back in one
+  click.
 
 Both columns are ordered by what you can do with a mod rather than by the order
 they were added in: a mod with something to install or update sits at the top, an
