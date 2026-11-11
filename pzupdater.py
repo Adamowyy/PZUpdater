@@ -1620,6 +1620,9 @@ class PZUpdaterApp:
         self.f_muted = ctk.CTkFont(size=11)
         self.f_badge = ctk.CTkFont(size=12, weight="bold")
         self.f_button = ctk.CTkFont(size=13, weight="bold")
+        # The eye on a mod card: the emoji comes from its own family, because the
+        # interface font has no such glyph and falls back to a tiny one.
+        self.f_eye = ctk.CTkFont(family="Segoe UI Emoji", size=16)
 
         # header: title on the left, language flags in the corner, signature beside them
         head = ctk.CTkFrame(self.root, fg_color="transparent")
@@ -1778,30 +1781,31 @@ class PZUpdaterApp:
                                 border_width=1, border_color=BORDER)
             card.pack(fill="x", pady=3)
 
+            # The eye sits *before* the title, so nothing is reserved on the right
+            # and the card is no wider than the title needs: folded, it is one line
+            # with the title shifted over.
+            eye = ctk.CTkButton(card, text=EYE_OPEN, width=28, height=28,
+                                fg_color="transparent", hover_color=CARD_SEL,
+                                text_color=SUBTLE, corner_radius=6, font=self.f_eye,
+                                command=lambda k=m["key"]: self._toggle_collapsed(k))
+            eye.grid(row=0, column=0, sticky="w", padx=(7, 0), pady=(6, 0))
+
             name = ctk.CTkLabel(card, text=m["name"], font=self.f_mod,
                                 text_color=TEXT, anchor="w")
-            name.grid(row=0, column=0, sticky="w", padx=12, pady=(8, 0))
+            name.grid(row=0, column=1, sticky="w", padx=(3, 0), pady=(8, 0))
 
             badge = ctk.CTkLabel(card, text=self.t("status.pending"), font=self.f_badge,
                                  text_color="#9aa0aa", fg_color="#2a2d33",
                                  corner_radius=8, height=22)
-            badge.grid(row=0, column=1, sticky="e", padx=(0, 4), pady=(8, 0))
-
-            # The eye folds the card down to its title: a mod nobody uses must not
-            # take a third of the column. Which cards are folded is remembered.
-            eye = ctk.CTkButton(card, text=EYE_OPEN, width=22, height=22,
-                                fg_color="transparent", hover_color=CARD_SEL,
-                                text_color=SUBTLE, corner_radius=6, font=self.f_muted,
-                                command=lambda k=m["key"]: self._toggle_collapsed(k))
-            eye.grid(row=0, column=2, sticky="e", padx=(0, 8), pady=(8, 0))
+            badge.grid(row=0, column=2, sticky="e", padx=(0, 12), pady=(8, 0))
 
             # A frame rather than one label: the hint about which build is ahead
             # has to stand out, and a label is painted in a single colour.
             sub = ctk.CTkFrame(card, fg_color="transparent")
-            sub.grid(row=1, column=0, sticky="w", padx=12, pady=(2, 8))
+            sub.grid(row=1, column=1, sticky="w", padx=(3, 8), pady=(2, 8))
 
             foot = ctk.CTkFrame(card, fg_color="transparent")
-            foot.grid(row=1, column=1, sticky="e", padx=12, pady=(2, 8))
+            foot.grid(row=1, column=2, sticky="e", padx=(0, 12), pady=(2, 8))
             wid = m["workshop_id"]
             ctk.CTkButton(foot, text=self.t("btn.steam"), width=68, height=22,
                           fg_color="transparent", hover_color=CARD_SEL, text_color=ACCENT,
@@ -1826,10 +1830,10 @@ class PZUpdaterApp:
                                 fg_color=ACCENT, hover_color=ACCENT_HOVER,
                                 text_color=ON_ACCENT, corner_radius=8, font=self.f_small,
                                 command=lambda k=m["key"]: self._update_one(k))
-            act.grid(row=2, column=0, columnspan=2, sticky="ew", padx=12, pady=(0, 10))
+            act.grid(row=2, column=0, columnspan=3, sticky="ew", padx=12, pady=(0, 10))
             act.grid_remove()
 
-            card.grid_columnconfigure(0, weight=1)
+            card.grid_columnconfigure(1, weight=1)
 
             self._cards[m["key"]] = {"frame": card, "name": name, "badge": badge,
                                      "sub": sub, "foot": foot, "eye": eye,
@@ -2447,6 +2451,10 @@ class PZUpdaterApp:
             infos[key]["collapsed"] = folded
             card["eye"].configure(text=EYE_SHUT if folded else EYE_OPEN,
                                   text_color=ACCENT if folded else SUBTLE)
+            # Folded, the title is the only thing in the card, so it carries the
+            # bottom padding itself - otherwise the content sits on the border and
+            # the rounded frame looks cut off at the bottom.
+            card["name"].grid_configure(pady=(8, 8) if folded else (8, 0))
             if folded:
                 card["name"].configure(text_color=SUBTLE)
             for part in ("badge", "sub", "foot"):
