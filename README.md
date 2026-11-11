@@ -46,6 +46,9 @@ add the ones that can be automated safely.
 - Checks whether the mod files are actually in the game folder, not just
   subscribed.
 - Copies what needs copying — per mod, or all of it at once.
+- Takes its own files back out again, mod by mod (see below).
+- Folds a mod you do not use down to its greyed-out title with the eye on the
+  card, and remembers that choice; a folded mod is left out of the Update button.
 - Knows when a game update made those files unusable, and offers one click to
   repair the game folder.
 - Updates itself: a new release of the app is downloaded and swapped in place.
@@ -110,6 +113,7 @@ So the target files of every mod are compared against the workshop copy:
 | Badge | Meaning |
 | --- | --- |
 | Subscribed, not installed | the mod is in your workshop, its files are not in the game folder |
+| New mod version | the files are not in the game folder and the author published a newer version than the one the app last applied |
 | Update available | an older or different version of the files sits in the game folder |
 | New update | the files are in place and the author published something newer |
 | Up to date | files match the workshop copy, nothing newer on Steam |
@@ -126,10 +130,18 @@ Two things are worth knowing about the mods that need hand work:
   ones matching the version your game reports, and leaves everything alone when it
   cannot check that. After a game update, start the game once before installing
   them again.
-- **What the app installed, it can take back.** A mod whose install the app
-  recorded has an **Uninstall** button that deletes exactly those files, and only
-  while they still have the bytes the app wrote. Anything else in the game folder
-  stays untouched; a file somebody changed since is left alone and reported.
+- **What the app installed, it can take back.** A mod gets an **Uninstall** button
+  that deletes exactly the files the app wrote, and only while they still have the
+  bytes it wrote. Anything else in the game folder stays untouched; a file somebody
+  changed since is left alone and reported. This works for every kind of supported
+  mod, and also for an install made before the app started recording what it wrote:
+  a file that is byte-identical to one the mod ships is recognised as the mod's own.
+  A replaced jar is the one thing that is never taken back — the file sits on top of
+  the mod's own jar.
+- **The eye folds a card away.** A mod you do not use can be reduced to its title,
+  greyed out, and the choice is kept in `state.json`. A folded mod gets no badge and
+  no button, and the main **Update** button leaves it alone; the eye brings the card
+  back in one click.
 
 Both columns are ordered by what you can do with a mod rather than by the order
 they were added in: a mod with something to install or update sits at the top, an
@@ -215,8 +227,10 @@ Windows może pokazać SmartScreen („nieznany wydawca", bo exe nie jest podpis
 Program sam znajduje Steama, grę i Warsztat, sprawdza datę publikacji każdego
 moda i kopiuje pliki, które trzeba skopiować ręcznie. Interfejs ma przełącznik
 języka (flagi w prawym górnym rogu), a stan trzyma w
-`%APPDATA%\PZUpdater\state.json`. Zmienia wyłącznie pliki modów z listy — bez
-backupów i bez kasowania czegokolwiek.
+`%APPDATA%\PZUpdater\state.json`. Zmienia wyłącznie pliki modów z listy i tylko
+te, które sam wgrał — przycisk **Odinstaluj** usuwa dokładnie jego pliki (te
+zmienione po instalacji zostawia i zgłasza). Oczko na karcie zwija moda, którego
+nie używasz, do wyszarzonego tytułu i pamięta ten wybór.
 
 **Chcesz, żeby program obsługiwał Twojego moda?** Napisz na Discordzie:
 **xadamowy** — podeślij link do Warsztatu, a jeśli wiesz, które pliki gdzie

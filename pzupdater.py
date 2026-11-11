@@ -42,7 +42,7 @@ PROFILE_URL = "https://steamcommunity.com/id/AdamowY/"
 
 # Bumped by hand with every release. The running exe compares itself against the
 # newest GitHub release, so the number here has to match the tag of the build.
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 RELEASES_API = "https://api.github.com/repos/Adamowyy/PZUpdater/releases/latest"
 APP_EXE_NAME = "PZUpdater.exe"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION}"
@@ -328,21 +328,26 @@ def release_key(name):
     return (version_key(text), 1, [])
 
 
+def version_folders(directory):
+    """Every version folder inside a "manual_installation" style directory."""
+    try:
+        entries = os.listdir(directory)
+    except OSError:
+        return []
+    out = []
+    for e in entries:
+        full = os.path.join(directory, e)
+        if version_key(e) and os.path.isdir(full):
+            out.append(full)
+    return out
+
+
 def newest_version_folder(directory):
     """Newest folder inside a "manual_installation" style directory."""
     best = None
     best_key = None
-    try:
-        entries = os.listdir(directory)
-    except OSError:
-        return None
-    for e in entries:
-        full = os.path.join(directory, e)
-        if not os.path.isdir(full):
-            continue
-        key = version_key(e)
-        if not key:
-            continue
+    for full in version_folders(directory):
+        key = version_key(os.path.basename(full))
         if best_key is None or key > best_key:
             best, best_key = full, key
     return best
@@ -414,6 +419,9 @@ def load_state():
     state.setdefault("app_update_skipped", None)
     if "manual_mods" not in state:
         state["manual_mods"] = list(DEFAULT_MANUAL_MODS)
+    # mod cards folded down to their title (a mod nobody uses)
+    if not isinstance(state.get("collapsed"), list):
+        state["collapsed"] = []
     if state.get("language") not in i18n.LANGUAGES:
         state["language"] = i18n.DEFAULT_LANGUAGE
     return state
@@ -467,16 +475,24 @@ def update_folder_copy(mod, game, ws, t, prev=None):
     dst = os.path.join(game, mod["target_rel"])
     os.makedirs(dst, exist_ok=True)
     copied = 0
+    files = {}
     for dirpath, _dirs, filenames in os.walk(src):
         rel = os.path.relpath(dirpath, src)
         out_dir = dst if rel == "." else os.path.join(dst, rel)
         os.makedirs(out_dir, exist_ok=True)
         for fn in filenames:
-            shutil.copy2(os.path.join(dirpath, fn), os.path.join(out_dir, fn))
+            target = os.path.join(out_dir, fn)
+            shutil.copy2(os.path.join(dirpath, fn), target)
+            # The record is what lets the app take these very files back out:
+            # a copied folder is exactly as uninstallable as a copied class.
+            recorded = os.path.relpath(target, game).replace("\\", "/")
+            digest = file_sha256(target)
+            if digest:
+                files[recorded] = digest
             copied += 1
     version = os.path.basename(version_dir)
     return True, t("action.folder_copied", mod["copy_name"], version, t.files(copied)), \
-        {"version": version}
+        {"version": version, "files": files}
 
 
 def update_files(mod, game, ws, t, prev=None):
@@ -484,9 +500,15 @@ def update_files(mod, game, ws, t, prev=None):
     for fn in mod["files"]:
         if not os.path.isfile(os.path.join(src_dir, fn)):
             return False, t("action.source_file_missing", fn), {}
+    files = {}
     for fn in mod["files"]:
-        shutil.copy2(os.path.join(src_dir, fn), os.path.join(game, fn))
-    return True, t("action.files_copied", t.files(len(mod["files"]))), {}
+        target = os.path.join(game, fn)
+        shutil.copy2(os.path.join(src_dir, fn), target)
+        recorded = fn.replace("\\", "/")
+        digest = file_sha256(target)
+        if digest:
+            files[recorded] = digest
+    return True, t("action.files_copied", t.files(len(mod["files"]))), {"files": files}
 
 
 def update_class_patch(mod, game, ws, t, prev=None):
@@ -586,6 +608,8 @@ WATCHED_GONE = 4       # not subscribed any more, so nothing to compare against
 
 def supported_rank(info):
     """Place of a mod from `UPDATABLE_MODS` in the left column."""
+    if info.get("collapsed"):
+        return (LEFT_IDLE, 0)           # folded away: a mod that is not in use
     if info.get("pending") == "repair":
         return (LEFT_TODO, -1)          # a game that does not start comes first
     if info["pending"]:
@@ -678,9 +702,8 @@ def _drop_empty_dirs(folder, stop):
         folder = os.path.dirname(folder)
 
 
-def remove_class_patch(mod, game, t, entry=None):
-    """Takes the class patches of an install out of the game folder again."""
-    files = (entry or {}).get("files") or {}
+def remove_mod_files(game, files, t):
+    """Deletes the files of an install from the game folder -> (ok, msg, meta)."""
     if not files:
         return False, t("action.nothing_to_remove"), {}
     removed, kept = remove_installed_files(game, list(files), files)
@@ -690,6 +713,69 @@ def remove_class_patch(mod, game, t, entry=None):
         return True, t("action.patches_removed_kept", t.files(len(removed)),
                        t.files(len(kept))), {"removed": removed, "kept": kept}
     return True, t("action.patches_removed", t.files(len(removed))), {"removed": removed}
+
+
+def remove_class_patch(mod, game, t, entry=None):
+    """Takes the files of a class-patch install out of the game folder again."""
+    return remove_mod_files(game, (entry or {}).get("files") or {}, t)
+
+
+def shipped_files(mod, ws):
+    """{path in the game folder: [every copy of it this mod ships]}.
+
+    The install record is the exact answer to "which files are ours", but an
+    install made before the app started recording one has no manifest at all.
+    The files a mod ships answer it too: a file in the game folder that is
+    byte-identical to one of them came from this mod, whichever version it is.
+    """
+    out = {}
+    if not ws or not os.path.isdir(ws) or not mod:
+        return out
+
+    def add(prefix, root):
+        for rel, full in dir_files(root).items():
+            key = f"{prefix}/{rel}".replace("\\", "/").strip("/")
+            out.setdefault(key, []).append(full)
+
+    kind = mod["type"]
+    if kind == "files_copy":
+        src = os.path.join(ws, mod["src_dir"])
+        for fn in mod["files"]:
+            full = os.path.join(src, fn)
+            if os.path.isfile(full):
+                out.setdefault(fn.replace("\\", "/"), []).append(full)
+    elif kind == "folder_copy":
+        for version in version_folders(os.path.join(ws, mod["manual_dir"])):
+            src = os.path.join(version, mod["copy_name"])
+            if os.path.isdir(src):
+                add(mod["target_rel"], src)
+    elif kind == "class_patch":
+        prefix = mod.get("target_rel") or mod["copy_name"]
+        for version in version_folders(os.path.join(ws, mod["src_dir"])):
+            src = os.path.join(version, mod["copy_name"])
+            if os.path.isdir(src):
+                add(prefix, src)
+    return out
+
+
+def adopted_files(mod, game, ws):
+    """{path: hash} of this mod's files already in the game folder, no record needed.
+
+    A jar replacement has none: the file it wrote sits on top of the mod's own
+    jar, so taking it back out would leave nothing behind.
+    """
+    out = {}
+    if not game:
+        return out
+    for rel, sources in shipped_files(mod, ws).items():
+        dst = os.path.join(game, *rel.split("/"))
+        if not os.path.isfile(dst):
+            continue
+        if any(files_identical(src, dst) for src in sources):
+            digest = file_sha256(dst)
+            if digest:
+                out[rel] = digest
+    return out
 
 
 def user_zomboid_dir():
@@ -1328,6 +1414,12 @@ ON_WARN = "#20140a"     # dark text, because white on amber is unreadable
 DISABLED_BG = "#3a3d42"
 DISABLED_TEXT = "#6b7280"
 
+# The eye on a mod card: it folds the card down to its greyed-out title. A folded
+# card is a mod that is not used, so the app also stops offering it to the main
+# Update button.
+EYE_OPEN = "👁"
+EYE_SHUT = "🙈"
+
 # Full-window curtain shown while the app is talking to Steam. A check can be
 # over in ~0.3 s on a fast connection, so it stays up for a moment to be seen.
 OVERLAY_BG = "#0b0c0e"
@@ -1422,6 +1514,23 @@ class PZUpdaterApp:
 
     def _saved_ts(self, workshop_id):
         return self.state.get("mods", {}).get(workshop_id, {}).get("steam_time_updated", 0)
+
+    # -- folded cards ---------------------------------------------------------
+    def _is_collapsed(self, key):
+        """True when this mod's card is folded down to its title."""
+        return key in (self.state.get("collapsed") or [])
+
+    def _toggle_collapsed(self, key):
+        """Folds or unfolds one mod card; the choice survives a restart."""
+        folded = list(self.state.get("collapsed") or [])
+        if key in folded:
+            folded.remove(key)
+        else:
+            folded.append(key)
+        self.state["collapsed"] = folded
+        save_state(self.state)
+        self._log("INFO", f"{'folded' if key in folded else 'unfolded'}: {key}")
+        self.refresh_statuses()
 
     def _manual_subscribed(self, workshop_id):
         return bool(find_workshop_dir(self.paths["libraries"], workshop_id))
@@ -1676,7 +1785,15 @@ class PZUpdaterApp:
             badge = ctk.CTkLabel(card, text=self.t("status.pending"), font=self.f_badge,
                                  text_color="#9aa0aa", fg_color="#2a2d33",
                                  corner_radius=8, height=22)
-            badge.grid(row=0, column=1, sticky="e", padx=12, pady=(8, 0))
+            badge.grid(row=0, column=1, sticky="e", padx=(0, 4), pady=(8, 0))
+
+            # The eye folds the card down to its title: a mod nobody uses must not
+            # take a third of the column. Which cards are folded is remembered.
+            eye = ctk.CTkButton(card, text=EYE_OPEN, width=22, height=22,
+                                fg_color="transparent", hover_color=CARD_SEL,
+                                text_color=SUBTLE, corner_radius=6, font=self.f_muted,
+                                command=lambda k=m["key"]: self._toggle_collapsed(k))
+            eye.grid(row=0, column=2, sticky="e", padx=(0, 8), pady=(8, 0))
 
             # A frame rather than one label: the hint about which build is ahead
             # has to stand out, and a label is painted in a single colour.
@@ -1715,8 +1832,8 @@ class PZUpdaterApp:
             card.grid_columnconfigure(0, weight=1)
 
             self._cards[m["key"]] = {"frame": card, "name": name, "badge": badge,
-                                     "sub": sub, "action": act, "remove": rem,
-                                     "bits": None}
+                                     "sub": sub, "foot": foot, "eye": eye,
+                                     "action": act, "remove": rem, "bits": None}
             for w in (card, name, badge, sub):
                 self._bind_click(w, m["key"])
 
@@ -1836,14 +1953,20 @@ class PZUpdaterApp:
         The record alone is not enough: the repair and the user both move files
         out by hand, and a record without files left an "Uninstall" button on a
         mod that was not installed anywhere.
+
+        An install made before the app recorded what it wrote has no manifest at
+        all, so the files are found the other way round: a file in the game
+        folder that is byte-identical to one this mod ships is the mod's own.
         """
         entry = self.state.get("mods", {}).get(mod["workshop_id"]) or {}
         game = self.paths.get("game_dir")
         files = entry.get("files") or {}
         if not game:
             return {}
-        return {rel: digest for rel, digest in files.items()
-                if os.path.exists(os.path.join(game, rel))}
+        if files:
+            return {rel: digest for rel, digest in files.items()
+                    if os.path.exists(os.path.join(game, rel))}
+        return adopted_files(mod, game, self.paths.get("workshop", {}).get(mod["key"]))
 
     def _prune_dead_records(self):
         """Drops install records whose files are gone from the game folder."""
@@ -1988,9 +2111,16 @@ class PZUpdaterApp:
 
         if install == INSTALL_MISSING:
             # Subscribed, but the files are not in the game folder: the card is
-            # greyed out like an unsubscribed one and installing stays a click away.
-            info.update(status=self.t("status.subscribed_not_installed"), tag="gray",
-                        pending="install", muted=True)
+            # greyed out like an unsubscribed one and installing stays a click
+            # away. A version the author published after the one the app last saw
+            # is news either way - without it an update lands in silence and the
+            # only thing left on the card is the warning about the signed jar.
+            if saved and cur > saved:
+                info.update(status=self.t("status.new_version"), tag="new",
+                            pending="install")
+            else:
+                info.update(status=self.t("status.subscribed_not_installed"), tag="gray",
+                            pending="install", muted=True)
         elif install == INSTALL_PARTIAL:
             info.update(status=self.t("status.needs_update"), tag="info", pending="install")
         elif install != INSTALL_OK or not cur:
@@ -2007,6 +2137,9 @@ class PZUpdaterApp:
         """{mod key: "install"|"update"} - what can be done with each mod."""
         pending = {}
         for m in self._visible_mods():
+            # A folded card is a mod that is not in use: no offer, no nagging.
+            if self._is_collapsed(m["key"]):
+                continue
             info = self._status_info(m)
             # A switch has its own button: the main one must never turn the user
             # over to the other build on its own. A repair is not an install.
@@ -2019,6 +2152,8 @@ class PZUpdaterApp:
         out = []
         visible = self._visible_mods()
         for m in visible:
+            if self._is_collapsed(m["key"]):
+                continue
             info = self._status_info(m)
             if not (info["pending"] in ("install", "update") and not info["switch"]
                     and info["install"] in (INSTALL_OK, INSTALL_PARTIAL)):
@@ -2278,6 +2413,10 @@ class PZUpdaterApp:
             if preview is not None and not info["switch"]:
                 bits.append((self.t("detail.newer_than_beta") if self._is_hidden(preview)
                              else self.t("detail.beta_offered"), ALERT))
+            # The warning owns the note line below, so the fact that the files are
+            # not in the game folder would otherwise vanish from the card.
+            if info["files_note"] and info["install"] == INSTALL_MISSING:
+                bits.append((self.t("detail.files_missing"), MUTED))
             # The file hint is long, so it goes on its own line and wraps
             note = None
             if info["switch"]:
@@ -2302,7 +2441,21 @@ class PZUpdaterApp:
             card["badge"].configure(text=status, text_color=tc, fg_color=bc)
             self._fill_bits(key, card, bits, note)
 
-            if info["pending"]:
+            # A folded card keeps its title only, greyed out: the mod is not in
+            # use and nothing on it is worth reading until the eye brings it back.
+            folded = self._is_collapsed(key)
+            infos[key]["collapsed"] = folded
+            card["eye"].configure(text=EYE_SHUT if folded else EYE_OPEN,
+                                  text_color=ACCENT if folded else SUBTLE)
+            if folded:
+                card["name"].configure(text_color=SUBTLE)
+            for part in ("badge", "sub", "foot"):
+                if folded:
+                    card[part].grid_remove()
+                else:
+                    card[part].grid()
+
+            if info["pending"] and not folded:
                 if info["pending"] == "repair":
                     card["action"].configure(text=self.t("btn.repair"),
                                              fg_color=DANGER, hover_color="#b91c1c",
@@ -2469,22 +2622,29 @@ class PZUpdaterApp:
         mod = next((m for m in UPDATABLE_MODS if m["key"] == key), None)
         if mod is None or self._busy or not self.paths["game_dir"]:
             return
-        entry = self.state.get("mods", {}).get(mod["workshop_id"]) or {}
-        files = entry.get("files") or {}
+        files = self._installed_files(mod)
         if not files:
+            self.set_status_key("action.nothing_to_remove")
+            self.refresh_statuses()
             return
         if not messagebox.askyesno(self.t("dialog.remove.title"),
                                    self.t("dialog.remove.body", self._mod_name(mod),
                                           self.t.files(len(files)))):
             return
         self.set_status_key("msg.removing_one", self._mod_name(mod))
-        ok, msg, meta = remove_class_patch(mod, self.paths["game_dir"], self.t, entry)
+        ok, msg, meta = remove_mod_files(self.paths["game_dir"], files, self.t)
         if ok:
-            self.state.get("mods", {}).pop(mod["workshop_id"], None)
+            kept = meta.get("kept") or []
+            record = self.state.get("mods", {}).get(mod["workshop_id"])
+            if kept and record is not None:
+                # What could not be taken back is still the mod's own: the record
+                # stays, so the card keeps offering to remove the rest.
+                record["files"] = {rel: files[rel] for rel in kept if rel in files}
+            else:
+                self.state.get("mods", {}).pop(mod["workshop_id"], None)
             save_state(self.state)
             self._log("INFO", msg)
             self.set_status(msg)
-            kept = meta.get("kept") or []
             if kept:
                 self._log("ERROR", self.t("action.patches_removed_kept",
                                           self.t.files(len(meta.get("removed") or [])),

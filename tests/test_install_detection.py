@@ -603,6 +603,7 @@ def headless_app(game, ws_map, state=None):
         _mod_by_workshop_id = pz.PZUpdaterApp._mod_by_workshop_id
         _is_obsolete = pz.PZUpdaterApp._is_obsolete
         _is_hidden = pz.PZUpdaterApp._is_hidden
+        _is_collapsed = pz.PZUpdaterApp._is_collapsed
         _visible_mods = pz.PZUpdaterApp._visible_mods
         _status_info = pz.PZUpdaterApp._status_info
         _pending_actions = pz.PZUpdaterApp._pending_actions

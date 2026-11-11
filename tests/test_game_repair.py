@@ -335,6 +335,34 @@ class TestRowStatus(RepairCase):
         self.assertIsNone(info["pending"])
         self.assertTrue(info["signed_warning"])
 
+    def test_a_mod_that_is_not_installed_still_reports_a_new_version(self):
+        """Autor wydał paczkę pod ten build, ale plików moda nie ma w grze.
+
+        Wiersz mówił wtedy tylko "Zasubskrybowany, nie zainstalowany", więc update
+        moda przechodził bez żadnej informacji — zostawało samo ostrzeżenie.
+        """
+        self.jar(signed=True)
+        self.build_for("42.22.2")
+        app = self.App(self.game, self.tempo_for("42.22.2"))
+        app.steam_info["3736629791"] = {"title": "Tempo", "time_updated": 1793000000}
+        app._saved_ts = lambda wid: 1790775512
+        info = pz.PZUpdaterApp._status_info(app, self.mod("tempo_patches"))
+        self.assertEqual(info["status"], "status.new_version")
+        self.assertEqual(info["tag"], "new")
+        self.assertEqual(info["pending"], "install")
+        self.assertFalse(info["muted"])          # nie wyszarzać: to jest news
+        self.assertTrue(info["signed_warning"])  # ostrzeżenie zostaje
+
+    def test_a_first_subscription_is_not_a_new_version(self):
+        """Nic jeszcze nie było wgrane -> nie ma czego porównać, wiersz jest szary."""
+        self.jar(signed=True)
+        self.build_for("42.22.2")
+        app = self.App(self.game, self.tempo_for("42.22.2"))
+        app.steam_info["3736629791"] = {"title": "Tempo", "time_updated": 1793000000}
+        info = pz.PZUpdaterApp._status_info(app, self.mod("tempo_patches"))
+        self.assertEqual(info["status"], "status.subscribed_not_installed")
+        self.assertTrue(info["muted"])
+
     def test_an_unsigned_jar_has_no_warning_at_all(self):
         self.jar(signed=False)
         self.build_for("42.22.2")
