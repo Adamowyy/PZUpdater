@@ -2073,16 +2073,22 @@ class PZUpdaterApp:
         if not ws:
             info.update(status=self.t("status.not_subscribed"), tag="gray", muted=True)
             return info
-        # A signed game jar refuses copied classes, but that is a warning on the
-        # row, not a ban: the author may have changed the way the mod works, and
-        # an update has to stay visible and installable either way. A mod that
-        # ships classes of the game's own packages breaks the signed jar no matter
-        # which version it is - the JVM refuses the mix, checked with the mod's own
-        # files: "class zombie.core.physics.CarController$GearInfo's signer
-        # information does not match ...".
+        # A deprecation notice says more than anything else about the row, and a
+        # mod the better build already does is never installed from here.
+        if self._is_obsolete(mod):
+            info.update(status=self.t("status.deprecated"), tag="old", muted=True)
+            return info
+        # A signed game jar refuses copied classes of the game's own packages, no
+        # matter which version the author ships: the JVM refuses the mix and the
+        # game does not start at all (checked with the mod's own files:
+        # "class zombie.core.physics.CarController$GearInfo's signer information
+        # does not match ..."). So this is not an install with a warning - there is
+        # nothing to install until the author ships a jar replacement.
         if self._blocked_by_signature(mod):
-            info["signed_warning"] = True
-            info["files_note"] = self.t("detail.signed_jar")
+            info.update(status=self.t("status.signed_jar"), tag="err", muted=True,
+                        pending=None, signed_warning=True,
+                        files_note=self.t("detail.signed_jar_blocked"))
+            return info
         if mod["type"] == "class_patch":
             # Made for one game version each: without the matching files, or without a
             # way to tell which version the game folder holds, nothing may be copied.
@@ -2109,9 +2115,6 @@ class PZUpdaterApp:
                             tag="old", muted=True,
                             files_note=self.t("detail.patch_wait"))
                 return info
-        if self._is_obsolete(mod):
-            info.update(status=self.t("status.deprecated"), tag="old", muted=True)
-            return info
 
         # One loader per game folder: the other entries offer the switch instead.
         installed = self._installed_build(mod)

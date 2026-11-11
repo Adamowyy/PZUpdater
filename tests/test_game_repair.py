@@ -314,28 +314,35 @@ class TestRowStatus(RepairCase):
         self.assertEqual(info["repair"], 3)
         self.assertFalse(info["muted"])
 
-    def test_a_patch_for_this_build_is_offered_even_with_a_signed_jar(self):
-        """Sedno: autor wydał paczkę pod 42.22.2 -> jest do zainstalowania."""
+    def test_a_patch_for_this_build_is_not_offered_on_a_signed_jar(self):
+        """Podpisany jar nie przyjmie skopiowanych klas: nie ma czego instalować."""
         self.jar(signed=True)
         self.build_for("42.22.2")
         app = self.App(self.game, self.tempo_for("42.22.2"))
         info = pz.PZUpdaterApp._status_info(app, self.mod("tempo_patches"))
-        self.assertEqual(info["pending"], "install")
-        self.assertEqual(info["status"], "status.subscribed_not_installed")
-        # Paczka zrobiona pod ten build gry i tak jest blokowana przez podpisany
-        # jar, więc ostrzeżenie zostaje - ale przycisk jest i klik działa.
+        self.assertIsNone(info["pending"])          # żadnego przycisku instalacji
+        self.assertEqual(info["status"], "status.signed_jar")
+        self.assertEqual(info["tag"], "err")
+        self.assertEqual(info["files_note"], "detail.signed_jar_blocked")
         self.assertTrue(info["signed_warning"])
-        # wyszarzony tytuł (jak każdy niezainstalowany), ale przycisk jest
         self.assertTrue(info["muted"])
 
+    def test_the_same_patch_is_offered_on_a_game_without_a_signature(self):
+        """Bez podpisu te same pliki działają, więc wiersz jest zwykły."""
+        self.jar(signed=False)
+        self.build_for("42.22.2")
+        app = self.App(self.game, self.tempo_for("42.22.2"))
+        info = pz.PZUpdaterApp._status_info(app, self.mod("tempo_patches"))
+        self.assertEqual(info["pending"], "install")
+        self.assertFalse(info["signed_warning"])
+
     def test_no_patch_for_this_build_waits_instead_of_nagging(self):
-        self.jar(signed=True)
+        self.jar(signed=False)
         self.build_for("42.22.2")
         app = self.App(self.game, self.tempo_for("42.21.0"))
         info = pz.PZUpdaterApp._status_info(app, self.mod("tempo_patches"))
         self.assertEqual(info["status"], "status.no_patch_build")
         self.assertIsNone(info["pending"])
-        self.assertTrue(info["signed_warning"])
 
     def test_a_mod_that_is_not_installed_still_reports_a_new_version(self):
         """Autor wydał paczkę pod ten build, ale plików moda nie ma w grze.
@@ -343,7 +350,7 @@ class TestRowStatus(RepairCase):
         Wiersz mówił wtedy tylko "Zasubskrybowany, nie zainstalowany", więc update
         moda przechodził bez żadnej informacji — zostawało samo ostrzeżenie.
         """
-        self.jar(signed=True)
+        self.jar(signed=False)
         self.build_for("42.22.2")
         app = self.App(self.game, self.tempo_for("42.22.2"))
         app.steam_info["3736629791"] = {"title": "Tempo", "time_updated": 1793000000}
@@ -353,11 +360,11 @@ class TestRowStatus(RepairCase):
         self.assertEqual(info["tag"], "new")
         self.assertEqual(info["pending"], "install")
         self.assertFalse(info["muted"])          # nie wyszarzać: to jest news
-        self.assertTrue(info["signed_warning"])  # podpisany jar gry: ostrzeżenie zostaje
+        self.assertFalse(info["signed_warning"])  # bez podpisu nie ma czego ostrzegać
 
     def test_a_first_subscription_is_not_a_new_version(self):
         """Nic jeszcze nie było wgrane -> nie ma czego porównać, wiersz jest szary."""
-        self.jar(signed=True)
+        self.jar(signed=False)
         self.build_for("42.22.2")
         app = self.App(self.game, self.tempo_for("42.22.2"))
         app.steam_info["3736629791"] = {"title": "Tempo", "time_updated": 1793000000}
@@ -365,17 +372,18 @@ class TestRowStatus(RepairCase):
         self.assertEqual(info["status"], "status.subscribed_not_installed")
         self.assertTrue(info["muted"])
 
-    def test_a_folder_published_for_this_game_still_warns(self):
+    def test_a_folder_published_for_this_game_is_a_firm_no(self):
         """42.22.0 zrobione pod 42.22.2 i tak wywala grę: JVM odrzuca podpis
-        (SecurityException: signer information does not match), więc ostrzeżenie
-        jest prawdziwe niezależnie od wersji plików."""
+        (SecurityException: signer information does not match), więc wiersz
+        mówi wprost, że z tym buildem ten mod nie pójdzie."""
         self.jar(signed=True)
         self.build_for("42.22.2")
         app = self.App(self.game, self.bcp_versions("42.21.0", "42.22.0"))
         info = pz.PZUpdaterApp._status_info(app, self.mod("better_car_physics"))
         self.assertTrue(info["signed_warning"])
-        self.assertEqual(info["files_note"], "detail.signed_jar")
-        self.assertEqual(info["pending"], "install")
+        self.assertEqual(info["status"], "status.signed_jar")
+        self.assertEqual(info["files_note"], "detail.signed_jar_blocked")
+        self.assertIsNone(info["pending"])
 
     def bcp_versions(self, *versions):
         """Folder Better Car Physics z jedną paczką na wersję gry."""

@@ -6,7 +6,7 @@ game folder by hand.
 
 ![PZ Updater](docs/screenshot.jpg)
 
-<sub>Better Car Physics is subscribed but its files are not in the game folder yet — that card is greyed out and has its own **Install** button, while the main **Update** button stays off the table.</sub>
+<sub>Better Car Physics is subscribed but its files are not in the game folder yet — that card stays greyed out until you install it, and the main **Update** button stays off the table.</sub>
 
 ## Install
 
@@ -78,16 +78,14 @@ The app checks the game folder against the jar on every start:
 - repaired files are **moved**, not deleted, into `%LOCALAPPDATA%\PZUpdater\removed\<date>\`
   (the exact folder is written to the log).
 
-While the jar stays signed, mods that copy classes into the game folder keep
-showing their updates and stay installable — but the row warns that this build of
-the game will most likely refuse to start with those files, and pressing install
-asks once before it writes anything. The jar refuses the mix of signed and
-unsigned classes of one package whatever version the mod is, so a fresh release
-does not change that: the JVM throws the exception above with the mod's own files.
-The check right after the install turns the row into **Blocks the game from
-starting** with the repair button (and says so in the status line, no dialog on
-top of your click); the repair takes exactly those files back out. Nothing is
-deleted, and nothing is hidden from you.
+While the jar stays signed, a mod that copies classes of the game's own packages
+cannot work at all: the JVM refuses the mix whatever version the author ships, and
+the game does not start. Its row says **Won't run on this game build** with the
+note *the signed game jar will not load these classes*, and there is no install
+button — nothing would come of pressing it. Such a mod has to arrive as a jar
+replacement (the way *ZombieBuddy Extensions* does) before it can be used again.
+The app proves the mod's own files against the game's own JRE: put them on the
+classpath ahead of the jar and the JVM throws the exception above straight away.
 
 ## Supported mods
 
@@ -122,6 +120,7 @@ So the target files of every mod are compared against the workshop copy:
 | Up to date | files match the workshop copy, nothing newer on Steam |
 | Not subscribed | no workshop folder for this mod |
 | Obsolete | another supported mod supersedes this one |
+| Can't be used with this game build | the mod copies classes of the game's own packages and the jar of this build is signed, so the game will not start with them (no install button) |
 
 Mods that are not installed yet are greyed out, and installing one is always a
 separate click. The main **Update** button only touches mods that are already in
