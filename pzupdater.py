@@ -62,6 +62,9 @@ UPDATABLE_MODS = [
         "files": ["ZombieBuddy.jar", "zbNative.dll"],
         # the loader does nothing until the game starts with the agent launch option
         "notice": "zombiebuddy_launch_options",
+        # ZombieBuddy is what Zed's Better FPS patches the game through, so its
+        # subscription is worth a word on the row.
+        "requires": [{"workshop_id": "3622986450", "name": "Zed's Better FPS"}],
         "help": {
             "en": "Copies ZombieBuddy.jar and zbNative.dll into the game folder "
                   "(the Java mod loader).",
@@ -103,6 +106,7 @@ UPDATABLE_MODS = [
         "src_dir": os.path.join("mods", "ZombieBuddy", "libs"),
         "files": ["ZombieBuddy.jar", "zbNative.dll"],
         "notice": "zombiebuddy_launch_options",
+        "requires": [{"workshop_id": "3622986450", "name": "Zed's Better FPS"}],
         "visible_if_newer_than": "3619862853",
         "alternative_to": "3619862853",
         "name_note": "mod.beta.note",
@@ -1534,7 +1538,19 @@ class PZUpdaterApp:
         self.refresh_statuses()
 
     def _manual_subscribed(self, workshop_id):
-        return bool(find_workshop_dir(self.paths["libraries"], workshop_id))
+        return bool(find_workshop_dir(self.paths.get("libraries") or (), workshop_id))
+
+    def _requirements(self, mod):
+        """State of the mods that need this one, for a word on the row.
+
+        Zed's Better FPS patches the game through ZombieBuddy, so its
+        subscription is the thing that makes the loader worth installing.
+        """
+        out = []
+        for need in mod.get("requires") or ():
+            out.append({"name": need["name"],
+                        "ok": self._manual_subscribed(need["workshop_id"])})
+        return out
 
     # -- language -------------------------------------------------------------
     def set_language(self, language):
@@ -2062,7 +2078,8 @@ class PZUpdaterApp:
         info = {"install": install, "ok": ok, "total": total, "pending": None,
                 "muted": False, "status": "", "tag": "", "files_note": None,
                 "switch": False, "switch_name": "", "repair": 0,
-                "signed_warning": False, "name": self._mod_name(mod)}
+                "signed_warning": False, "name": self._mod_name(mod),
+                "requires": self._requirements(mod)}
         # Files of this mod that are in the game folder and which the JVM refuses:
         # the game does not start at all, so nothing else about this row matters.
         strays = self._repair_files(mod)
@@ -2426,6 +2443,12 @@ class PZUpdaterApp:
             if info["repair"]:
                 bits.append((self.t("detail.repair_files",
                                     self.t.files(info["repair"])), ALERT))
+            # A companion mod this one is only useful with: say whether it is here.
+            for need in info["requires"]:
+                bits.append((self.t("detail.requires", need["name"],
+                                    self.t("detail.requires_ok") if need["ok"]
+                                    else self.t("detail.requires_missing")),
+                             MUTED if need["ok"] else ALERT))
             # Which build is ahead, so a BETA row appearing is never a guess
             preview = self._preview_of(m)
             if preview is not None and not info["switch"]:

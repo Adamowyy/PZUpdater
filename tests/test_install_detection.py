@@ -542,6 +542,8 @@ class TestDeprecatedRow(unittest.TestCase):
         _repair_files = pz.PZUpdaterApp._repair_files
         _blocked_by_signature = pz.PZUpdaterApp._blocked_by_signature
         _manifests = pz.PZUpdaterApp._manifests
+        _requirements = pz.PZUpdaterApp._requirements
+        _manual_subscribed = pz.PZUpdaterApp._manual_subscribed
 
         def __init__(self, obsolete):
             self.obsolete = obsolete
@@ -611,6 +613,8 @@ def headless_app(game, ws_map, state=None):
         _files_note = pz.PZUpdaterApp._files_note
         _mod_name = pz.PZUpdaterApp._mod_name
         _saved_ts = pz.PZUpdaterApp._saved_ts
+        _requirements = pz.PZUpdaterApp._requirements
+        _manual_subscribed = pz.PZUpdaterApp._manual_subscribed
         _repair_state = pz.PZUpdaterApp._repair_state
         _repair_files = pz.PZUpdaterApp._repair_files
         _blocked_by_signature = pz.PZUpdaterApp._blocked_by_signature

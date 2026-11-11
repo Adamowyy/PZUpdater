@@ -271,9 +271,12 @@ class TestRowStatus(RepairCase):
         _is_obsolete = lambda self, mod: False
         _saved_ts = lambda self, wid: 0
         _log = lambda self, *args: None
+        _requirements = pz.PZUpdaterApp._requirements
+        _manual_subscribed = pz.PZUpdaterApp._manual_subscribed
 
-        def __init__(self, game, workshop):
-            self.paths = {"game_dir": game, "workshop": workshop}
+        def __init__(self, game, workshop, libraries=()):
+            self.paths = {"game_dir": game, "workshop": workshop,
+                          "libraries": list(libraries)}
             self.steam_info = {}
             self.state = {"mods": {}}
             self._sources = pz.accepted_sources(pz.UPDATABLE_MODS, workshop)
