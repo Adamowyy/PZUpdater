@@ -13,6 +13,23 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import i18n
 import pzupdater as pz
 
+# [B42] ZombieBuddy Extensions wycięty z apki 2026-11-11 (Adam: mod jest useless).
+# Wpis zostaje tu, bo pokrywa podmianę jara, warstwę i wygaszanie po nowszym wydaniu.
+EXTS = {
+    "key": "zombiebuddy_fix",
+    "name": "[B42] ZombieBuddy Extensions",
+    "workshop_id": "3807686870",
+    "type": "jar_replace",
+    "jar_name": "ZombieBuddy.jar",
+    "search_under": "mods",
+    "target_rel": "ZombieBuddy.jar",
+    "obsolete_if_newer_than": "3619862853",
+    "obsolete_if_installed": ["3812624292"],
+    "layer": True,
+    "alternative_to": "3619862853",
+}
+
+
 BCP_CLASSES = (
     "core/physics/CarController.class",
     "core/physics/CarController$ClientControls.class",
@@ -43,6 +60,8 @@ class TempCase(unittest.TestCase):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def mod(self, key):
+        if key == EXTS["key"]:      # wpis wycięty z rejestru, ale typ dalej działa
+            return EXTS
         return next(m for m in pz.UPDATABLE_MODS if m["key"] == key)
 
     def game_path(self, rel):

@@ -73,32 +73,6 @@ UPDATABLE_MODS = [
         },
     },
     {
-        # Renamed to "[B42] ZombieBuddy Extensions"; the jar and its target are unchanged
-        "key": "zombiebuddy_fix",
-        "name": "[B42] ZombieBuddy Extensions",
-        "workshop_id": "3807686870",
-        "type": "jar_replace",
-        "jar_name": "ZombieBuddy.jar",
-        "search_under": "mods",
-        "target_rel": "ZombieBuddy.jar",
-        # Obsolete once ZombieBuddy ships past it; the beta alone does not count
-        "obsolete_if_newer_than": "3619862853",
-        "obsolete_if_installed": ["3812624292"],
-        # a patch laid over the loader, not a build anyone chooses between
-        "layer": True,
-        "alternative_to": "3619862853",
-        "help": {
-            "en": "Replaces ZombieBuddy.jar in the game folder with the jar from "
-                  "ZombieBuddy Extensions (the 42.21 temporary fix under its new "
-                  "name). Skipped once ZombieBuddy is newer than the release this "
-                  "jar was built on.",
-            "pl": "Podmienia ZombieBuddy.jar w folderze gry na wersję z ZombieBuddy "
-                  "Extensions (dawny Temporary Fix dla 42.21). Przestaje się "
-                  "nakładać, gdy ZombieBuddy wyprzedzi wersję, na której zbudowany "
-                  "jest ten jar.",
-        },
-    },
-    {
         "key": "zombiebuddy_beta",
         "name": "ZombieBuddy BETA",
         "workshop_id": "3812624292",

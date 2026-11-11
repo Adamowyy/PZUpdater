@@ -13,6 +13,30 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pzupdater as pz
 
+# [B42] ZombieBuddy Extensions wycięty z apki 2026-11-11 (Adam: mod jest useless).
+# Wpis zostaje tu, bo pokrywa podmianę jara, warstwę i wygaszanie po nowszym wydaniu.
+EXTS = {
+    "key": "zombiebuddy_fix",
+    "name": "[B42] ZombieBuddy Extensions",
+    "workshop_id": "3807686870",
+    "type": "jar_replace",
+    "jar_name": "ZombieBuddy.jar",
+    "search_under": "mods",
+    "target_rel": "ZombieBuddy.jar",
+    "obsolete_if_newer_than": "3619862853",
+    "obsolete_if_installed": ["3812624292"],
+    "layer": True,
+    "alternative_to": "3619862853",
+}
+
+def with_extensions():
+    """Rejestr z wpisem Extensions na jego dawnym miejscu: wydanie, fix, beta."""
+    mods = list(pz.UPDATABLE_MODS)
+    at = next(i for i, m in enumerate(mods) if m["key"] == "zombiebuddy") + 1
+    return mods[:at] + [EXTS] + mods[at:]
+
+
+
 
 def make_jar(path, version, manifest=True):
     """Minimalny jar z manifestem takim, jak w prawdziwym ZombieBuddy."""
@@ -94,12 +118,18 @@ class TestIsObsolete(TempCase):
 
     def setUp(self):
         super().setUp()
+        self._registry = pz.UPDATABLE_MODS
+        pz.UPDATABLE_MODS = with_extensions()
         self.base = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
-        self.fix = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+        self.fix = EXTS
         self.ws_base = self.p("ws_base")
         self.ws_fix = self.p("ws_fix")
         self.steam_info = {self.base["workshop_id"]: {"time_updated": 200},
                            self.fix["workshop_id"]: {"time_updated": 100}}
+
+    def tearDown(self):
+        pz.UPDATABLE_MODS = self._registry
+        super().tearDown()
 
     def app(self, base_version, fix_version):
         make_jar(os.path.join(self.ws_base, "mods", "ZombieBuddy", "libs", "ZombieBuddy.jar"),

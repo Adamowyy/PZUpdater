@@ -83,7 +83,7 @@ cannot work at all: the JVM refuses the mix whatever version the author ships, a
 the game does not start. Its row says **Won't run on this game build** with the
 note *warning: this may stop the game starting*, and there is no install
 button — nothing would come of pressing it. Such a mod has to arrive as a jar
-replacement (the way *ZombieBuddy Extensions* does) before it can be used again.
+replacement (the way the ZombieBuddy loader does) before it can be used again.
 The app proves the mod's own files against the game's own JRE: put them on the
 classpath ahead of the jar and the JVM throws the exception above straight away.
 
@@ -93,7 +93,6 @@ classpath ahead of the jar and the JVM throws the exception above straight away.
 | --- | --- | --- |
 | ZombieBuddy | 3619862853 | `ZombieBuddy.jar` and `zbNative.dll` into the game folder (the Java mod loader) |
 | ZombieBuddy BETA | 3812624292 | the same two files from the beta build. The row appears only while the beta is newer than ZombieBuddy and hides itself once ZombieBuddy passes it |
-| [B42] ZombieBuddy Extensions | 3807686870 | replaces `ZombieBuddy.jar` with the extension build (the 42.21 temporary fix under its new name) |
 | Better Car Physics | 2909035179 | the `zombie` folder from the newest version in `manual_installation` |
 | Tempo - A Performance & FPS Optimizer | 3736629791 | the three compiled `.class` patches, from the `manual_installation` folder named after the game build |
 
@@ -119,7 +118,6 @@ So the target files of every mod are compared against the workshop copy:
 | New update | the files are in place and the author published something newer |
 | Up to date | files match the workshop copy, nothing newer on Steam |
 | Not subscribed | no workshop folder for this mod |
-| Obsolete | another supported mod supersedes this one |
 | Can't be used with this game build | the mod copies classes of the game's own packages and the jar of this build is signed, so the game will not start with them (no install button) |
 
 Mods that are not installed yet are greyed out, and installing one is always a

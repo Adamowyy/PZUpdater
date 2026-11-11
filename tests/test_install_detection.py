@@ -15,6 +15,30 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import i18n
 import pzupdater as pz
 
+# [B42] ZombieBuddy Extensions wycięty z apki 2026-11-11 (Adam: mod jest useless).
+# Wpis zostaje tu, bo pokrywa podmianę jara, warstwę i wygaszanie po nowszym wydaniu.
+EXTS = {
+    "key": "zombiebuddy_fix",
+    "name": "[B42] ZombieBuddy Extensions",
+    "workshop_id": "3807686870",
+    "type": "jar_replace",
+    "jar_name": "ZombieBuddy.jar",
+    "search_under": "mods",
+    "target_rel": "ZombieBuddy.jar",
+    "obsolete_if_newer_than": "3619862853",
+    "obsolete_if_installed": ["3812624292"],
+    "layer": True,
+    "alternative_to": "3619862853",
+}
+
+def with_extensions():
+    """Rejestr z wpisem Extensions na jego dawnym miejscu: wydanie, fix, beta."""
+    mods = list(pz.UPDATABLE_MODS)
+    at = next(i for i, m in enumerate(mods) if m["key"] == "zombiebuddy") + 1
+    return mods[:at] + [EXTS] + mods[at:]
+
+
+
 
 def write(path, content=b"x", mtime=None):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -128,6 +152,8 @@ class TestFilesCopyWithAlternateSource(TempCase):
 
     def setUp(self):
         super().setUp()
+        self._registry = pz.UPDATABLE_MODS
+        pz.UPDATABLE_MODS = with_extensions()
         self.ws_base = self.p("ws_base")
         self.ws_fix = self.p("ws_fix")
         self.base_jar = write(
@@ -142,8 +168,12 @@ class TestFilesCopyWithAlternateSource(TempCase):
                          "42.21", "ZombieBuddy.jar"),
             b"FIX-JAR", mtime=1700000000)
         self.base = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
-        self.fix = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+        self.fix = EXTS
         self.ws_map = {"zombiebuddy": self.ws_base, "zombiebuddy_fix": self.ws_fix}
+
+    def tearDown(self):
+        pz.UPDATABLE_MODS = self._registry
+        super().tearDown()
 
     def test_sources_include_both_jars(self):
         sources = pz.accepted_sources(pz.UPDATABLE_MODS, self.ws_map)
@@ -195,6 +225,8 @@ class TestRealRegistry(TempCase):
 
     def setUp(self):
         super().setUp()
+        self._registry = pz.UPDATABLE_MODS
+        pz.UPDATABLE_MODS = with_extensions()
         self.ws_map = {}
         for mod in pz.UPDATABLE_MODS:
             ws = self.p("content", mod["workshop_id"])
@@ -238,6 +270,7 @@ class TestRealRegistry(TempCase):
               b"new-base")
 
     def tearDown(self):
+        pz.UPDATABLE_MODS = self._registry
         if self._env is None:
             os.environ.pop("USERPROFILE", None)
         else:
@@ -352,7 +385,7 @@ class TestBetaVisibility(unittest.TestCase):
 
     BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
     RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
-    FIX = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+    FIX = EXTS
 
     def hidden(self, beta_version, release_version):
         versions = {"zombiebuddy_beta": beta_version, "zombiebuddy": release_version}
@@ -406,6 +439,8 @@ class TestAlternativeBuilds(TempCase):
 
     def setUp(self):
         super().setUp()
+        self._registry = pz.UPDATABLE_MODS
+        pz.UPDATABLE_MODS = with_extensions()
         self.ws_rel = self.p("ws_rel")
         self.ws_fix = self.p("ws_fix")
         self.ws_beta = self.p("ws_beta")
@@ -415,10 +450,14 @@ class TestAlternativeBuilds(TempCase):
         write(os.path.join(self.ws_fix, "mods", "ZombieBuddy_Extensions", "42.21",
                            "ZombieBuddy.jar"), b"FIX-JAR")
         self.RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
-        self.FIX = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+        self.FIX = EXTS
         self.BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
         self.ws_map = {"zombiebuddy": self.ws_rel, "zombiebuddy_fix": self.ws_fix,
                        "zombiebuddy_beta": self.ws_beta}
+
+    def tearDown(self):
+        pz.UPDATABLE_MODS = self._registry
+        super().tearDown()
 
     def game_with_jar(self, content):
         write(os.path.join(self.game, "ZombieBuddy.jar"), content)
@@ -463,7 +502,7 @@ class TestOffersSwitch(unittest.TestCase):
     """Kto dostaje przycisk „Zmień na…", a kto zwykłe Zainstaluj."""
 
     RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
-    FIX = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+    FIX = EXTS
     BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
 
     def test_a_build_that_is_not_in_the_game_offers_the_switch(self):
@@ -497,7 +536,7 @@ class TestClashingBuild(unittest.TestCase):
     """Dwa wpisy z tym samym mod id obok siebie psują multiplayera."""
 
     RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
-    FIX = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+    FIX = EXTS
     BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
 
     ALL = {"zombiebuddy": "content", "zombiebuddy_beta": "content",
@@ -575,7 +614,7 @@ class TestDeprecatedRow(unittest.TestCase):
         def _visible_mods(self):
             return list(pz.UPDATABLE_MODS)
 
-    FIX = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+    FIX = EXTS
 
     def test_an_obsolete_row_comes_out_muted(self):
         info = pz.PZUpdaterApp._status_info(self.App(True), self.FIX)
@@ -647,6 +686,8 @@ class TestOutdatedBuildInGame(TempCase):
     def setUp(self):
         super().setUp()
         pz.JAR_VERSION_CACHE.clear()
+        self._registry = pz.UPDATABLE_MODS
+        pz.UPDATABLE_MODS = with_extensions()
         self.ws_rel = self.p("ws_rel")
         self.ws_fix = self.p("ws_fix")
         self.ws_beta = self.p("ws_beta")
@@ -659,7 +700,7 @@ class TestOutdatedBuildInGame(TempCase):
         # Gra ma build o jedną wersję starszy niż jego kopia w warsztacie
         self.game_with_jar("3.0.0-beta1")
         self.RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
-        self.FIX = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_fix")
+        self.FIX = EXTS
         self.BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
         # Jak na maszynie, na której to wyszło: wydanie bez subskrypcji, beta w grze
         self.ws_map = {"zombiebuddy": None, "zombiebuddy_fix": self.ws_fix,
@@ -671,6 +712,7 @@ class TestOutdatedBuildInGame(TempCase):
         write(os.path.join(self.game, "zbNative.dll"), b"DLL")
 
     def tearDown(self):
+        pz.UPDATABLE_MODS = self._registry
         super().tearDown()
         pz.JAR_VERSION_CACHE.clear()
 
