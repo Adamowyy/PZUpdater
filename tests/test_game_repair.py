@@ -322,7 +322,10 @@ class TestRowStatus(RepairCase):
         info = pz.PZUpdaterApp._status_info(app, self.mod("tempo_patches"))
         self.assertEqual(info["pending"], "install")
         self.assertEqual(info["status"], "status.subscribed_not_installed")
-        self.assertTrue(info["signed_warning"])
+        # Paczka zrobiona pod ten build gry: autor zdążył przed nami, więc wiersz
+        # jest zwykły - bez ostrzeżenia i bez pomarańczowego przycisku.
+        self.assertFalse(info["signed_warning"])
+        self.assertIsNone(info["files_note"])
         # wyszarzony tytuł (jak każdy niezainstalowany), ale przycisk jest
         self.assertTrue(info["muted"])
 
@@ -351,7 +354,7 @@ class TestRowStatus(RepairCase):
         self.assertEqual(info["tag"], "new")
         self.assertEqual(info["pending"], "install")
         self.assertFalse(info["muted"])          # nie wyszarzać: to jest news
-        self.assertTrue(info["signed_warning"])  # ostrzeżenie zostaje
+        self.assertFalse(info["signed_warning"])  # paczka pod ten build = bez ostrzeżenia
 
     def test_a_first_subscription_is_not_a_new_version(self):
         """Nic jeszcze nie było wgrane -> nie ma czego porównać, wiersz jest szary."""
@@ -362,6 +365,41 @@ class TestRowStatus(RepairCase):
         info = pz.PZUpdaterApp._status_info(app, self.mod("tempo_patches"))
         self.assertEqual(info["status"], "status.subscribed_not_installed")
         self.assertTrue(info["muted"])
+
+    def test_a_folder_published_for_this_game_clears_the_warning(self):
+        """Better Car Physics 42.22.0 przy grze 42.22.2: autor zdążył, wiersz zwykły."""
+        self.jar(signed=True)
+        self.build_for("42.22.2")
+        app = self.App(self.game, self.bcp_versions("42.21.0", "42.22.0"))
+        info = pz.PZUpdaterApp._status_info(app, self.mod("better_car_physics"))
+        self.assertFalse(info["signed_warning"])
+        self.assertIsNone(info["files_note"])
+        self.assertEqual(info["pending"], "install")
+
+    def test_a_folder_from_an_older_release_keeps_the_warning(self):
+        self.jar(signed=True)
+        self.build_for("42.22.2")
+        app = self.App(self.game, self.bcp_versions("42.21.0"))
+        info = pz.PZUpdaterApp._status_info(app, self.mod("better_car_physics"))
+        self.assertTrue(info["signed_warning"])
+        self.assertEqual(info["files_note"], "detail.signed_jar")
+
+    def test_files_made_for_a_newer_game_keep_the_warning(self):
+        self.jar(signed=True)
+        self.build_for("42.23.1")
+        app = self.App(self.game, self.bcp_versions("42.21.0", "42.22.0"))
+        info = pz.PZUpdaterApp._status_info(app, self.mod("better_car_physics"))
+        self.assertTrue(info["signed_warning"])
+
+    def bcp_versions(self, *versions):
+        """Folder Better Car Physics z jedną paczką na wersję gry."""
+        ws = os.path.join(self.tmp, "ws_bcp_" + "_".join(versions))
+        for version in versions:
+            src = os.path.join(ws, "mods", "BetterCarPhysics",
+                               "manual_installation", version, "zombie")
+            for rel in STRAYS[3:]:
+                write(os.path.join(src, *rel.split("/")[1:]), b"bcp-" + version.encode())
+        return {"better_car_physics": ws}
 
     def test_an_unsigned_jar_has_no_warning_at_all(self):
         self.jar(signed=False)

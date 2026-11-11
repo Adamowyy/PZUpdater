@@ -127,10 +127,15 @@ class TestFoldedCardsAreNotOffered(StateCase):
         self.assertEqual(app._pending_actions(), {TEMPO: "install"})
         self.assertEqual([m["key"] for m in app._installed_for_update()], [TEMPO])
 
-    def test_a_folded_card_sinks_to_the_bottom_of_the_column(self):
+    def test_a_folded_card_sinks_below_every_mod_in_use(self):
+        """Zwinięte mody idą pod spód — nawet pod te, które nie mają update'u."""
         folded = pz.supported_rank({"collapsed": True, "pending": "install", "tag": "new"})
         waiting = pz.supported_rank({"collapsed": False, "pending": "install", "tag": "new"})
+        idle = pz.supported_rank({"collapsed": False, "pending": None, "tag": ""})
+        current = pz.supported_rank({"collapsed": False, "pending": None, "tag": "ok"})
         self.assertGreater(folded, waiting)
+        self.assertGreater(folded, current)
+        self.assertGreater(folded, idle)
 
 
 if __name__ == "__main__":

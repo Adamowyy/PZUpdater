@@ -81,10 +81,12 @@ The app checks the game folder against the jar on every start:
 While the jar stays signed, mods that copy classes into the game folder keep
 showing their updates and stay installable — but the row warns that this build of
 the game will most likely refuse to start with those files, and pressing install
-asks once before it writes anything. The check right after the install catches
-it: if the files landed badly, the **Repair the game** dialog opens at once and
-takes exactly those files back out. Nothing is deleted, and nothing is hidden
-from you.
+asks once before it writes anything. A mod whose files were published for this
+very game build is taken at its word: no warning and a normal install button,
+because the author shipped it for the update you have. The check right after the
+install catches a bad outcome either way: if the files landed badly, the **Repair
+the game** dialog opens at once and takes exactly those files back out. Nothing is
+deleted, and nothing is hidden from you.
 
 ## Supported mods
 

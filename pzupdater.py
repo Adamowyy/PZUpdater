@@ -594,6 +594,7 @@ INSTALL_UNKNOWN = "unknown"  # nothing to compare against
 LEFT_TODO = 0      # something to install or update - a click is waiting
 LEFT_CURRENT = 1   # installed and matching the workshop copy
 LEFT_IDLE = 2      # not subscribed, or superseded by another mod
+LEFT_FOLDED = 3    # folded away: the user does not use this mod
 
 TODO_WRONG = 0     # files in the game folder are outdated or only partly there
 TODO_NEWER = 1     # files are fine, the author published something newer
@@ -609,7 +610,7 @@ WATCHED_GONE = 4       # not subscribed any more, so nothing to compare against
 def supported_rank(info):
     """Place of a mod from `UPDATABLE_MODS` in the left column."""
     if info.get("collapsed"):
-        return (LEFT_IDLE, 0)           # folded away: a mod that is not in use
+        return (LEFT_FOLDED, 0)         # a mod that is not in use goes last
     if info.get("pending") == "repair":
         return (LEFT_TODO, -1)          # a game that does not start comes first
     if info["pending"]:
@@ -1079,6 +1080,37 @@ def mod_targets(mod, ws, game=None):
     return []
 
 
+def mod_matches_game(mod, ws, game):
+    """True when the files this mod would install were made for the game in `game`.
+
+    A folder_copy keeps one folder per game release (42.21.0, 42.22.0), a
+    class_patch names the build exactly. Versions are compared by number with the
+    trailing zeros dropped, so files published for 42.22 count for a 42.22.2 game:
+    an author who shipped them after the game update made them for that update.
+    """
+    build = game_build(game)["build"]
+    if not build or not ws:
+        return False
+    if mod["type"] == "class_patch":
+        return class_patch_folder(mod, ws, build) is not None
+    if mod["type"] != "folder_copy":
+        return False
+    version = newest_version_folder(os.path.join(ws, mod["manual_dir"]))
+    if not version:
+        return False
+    made = _version_stem(os.path.basename(version))
+    have = _version_stem(build)
+    return bool(made) and bool(have) and have[:len(made)] == made
+
+
+def _version_stem(name):
+    """Version numbers without the trailing zeros: 42.22.0 -> [42, 22]."""
+    key = version_key(name)
+    while key and key[-1] == 0:
+        key.pop()
+    return key
+
+
 def build_family(mod, mods=None):
     """Every entry that installs the same files as this one, itself included."""
     mods = list(mods) if mods is not None else list(UPDATABLE_MODS)
@@ -1416,9 +1448,9 @@ DISABLED_TEXT = "#6b7280"
 
 # The eye on a mod card: it folds the card down to its greyed-out title. A folded
 # card is a mod that is not used, so the app also stops offering it to the main
-# Update button.
-EYE_OPEN = "👁"
-EYE_SHUT = "🙈"
+# Update button. One glyph, two colours: plain when the card is open, accent when
+# it is folded.
+EYE = "👁"
 
 # Full-window curtain shown while the app is talking to Steam. A check can be
 # over in ~0.3 s on a fast connection, so it stays up for a moment to be seen.
@@ -1784,7 +1816,7 @@ class PZUpdaterApp:
             # The eye sits *before* the title, so nothing is reserved on the right
             # and the card is no wider than the title needs: folded, it is one line
             # with the title shifted over.
-            eye = ctk.CTkButton(card, text=EYE_OPEN, width=28, height=28,
+            eye = ctk.CTkButton(card, text=EYE, width=28, height=28,
                                 fg_color="transparent", hover_color=CARD_SEL,
                                 text_color=SUBTLE, corner_radius=6, font=self.f_eye,
                                 command=lambda k=m["key"]: self._toggle_collapsed(k))
@@ -2069,7 +2101,11 @@ class PZUpdaterApp:
         # A signed game jar refuses copied classes, but that is a warning on the
         # row, not a ban: the author may have changed the way the mod works, and
         # an update has to stay visible and installable either way.
-        if self._blocked_by_signature(mod):
+        # A mod whose files were made for this very game build gets a normal row:
+        # the author shipped them after the game update, and the check right after
+        # the install still takes them back out if the game stops starting.
+        if self._blocked_by_signature(mod) and not mod_matches_game(
+                mod, ws, self.paths["game_dir"]):
             info["signed_warning"] = True
             info["files_note"] = self.t("detail.signed_jar")
         if mod["type"] == "class_patch":
@@ -2449,7 +2485,7 @@ class PZUpdaterApp:
             # use and nothing on it is worth reading until the eye brings it back.
             folded = self._is_collapsed(key)
             infos[key]["collapsed"] = folded
-            card["eye"].configure(text=EYE_SHUT if folded else EYE_OPEN,
+            card["eye"].configure(text=EYE,
                                   text_color=ACCENT if folded else SUBTLE)
             # Folded, the title is the only thing in the card, so it carries the
             # bottom padding itself - otherwise the content sits on the border and
@@ -2880,8 +2916,11 @@ class PZUpdaterApp:
                 if self.paths["workshop"].get(m["key"]) and not self._is_obsolete(m)]
         # A signed game jar refuses copied classes. The user asked for the mods to
         # be installable anyway, so warn once and then do what was asked - the
-        # repair button and the check after the install cover the damage.
-        blocked = [m for m in mods if patch_conflicts(self.paths["game_dir"], m)]
+        # repair button and the check after the install cover the damage. Files
+        # the author made for this very game build are taken at their word.
+        blocked = [m for m in mods if patch_conflicts(self.paths["game_dir"], m)
+                   and not mod_matches_game(m, self.paths["workshop"].get(m["key"]),
+                                            self.paths["game_dir"])]
         if blocked:
             names = ", ".join(self._mod_name(m) for m in blocked)
             if not messagebox.askyesno(self.t("dialog.signed.title"),
