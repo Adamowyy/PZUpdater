@@ -190,6 +190,22 @@ class TestSelfUpdateScript(unittest.TestCase):
         self.assertIn('echo 9.9.9> "%FAILED%"', rollback)
         self.assertIn('start "" "%TARGET%"', rollback)
 
+    def test_the_readiness_check_is_not_a_regex(self):
+        """`-match '1.1.1'` to wzorzec, nie numer wersji - stąd fałszywe wycofania."""
+        script = self.script()
+        self.assertNotIn("-match", script)
+        self.assertIn(".Contains('9.9.9 ')", script)
+
+    def test_a_slow_start_gets_a_full_minute(self):
+        """PyInstaller onefile + skan antywirusa potrafi trwać dłużej niż 15 s."""
+        self.assertIn("-lt 120", pz.SELF_UPDATE_SCRIPT)
+        self.assertIn("Start-Sleep -Milliseconds 500", pz.SELF_UPDATE_SCRIPT)
+
+    def test_no_step_needs_a_console(self):
+        """`timeout` chce wejścia z konsoli - w ukrytym cmd zawiesza skrypt."""
+        self.assertNotIn("timeout /t", pz.SELF_UPDATE_SCRIPT)
+        self.assertIn("ping -n 2 127.0.0.1 >nul", pz.SELF_UPDATE_SCRIPT)
+
     def test_the_batch_file_has_real_crlf(self):
         self.assertIn(pz.NEWLINE_CRLF, pz.SELF_UPDATE_SCRIPT)
         self.assertNotIn("\n\n", pz.SELF_UPDATE_SCRIPT.replace(pz.NEWLINE_CRLF, "|"))
@@ -210,6 +226,16 @@ class TestStartMarker(unittest.TestCase):
         pz.write_start_marker()
         with open(pz.update_marker(), encoding="utf-8") as f:
             self.assertTrue(f.read().startswith(pz.APP_VERSION))
+
+    def test_the_marker_also_names_the_builds_that_must_accept_it(self):
+        """Do 1.1.1 skrypt podmiany szukał w znaczniku numeru builda, który go
+        uruchomił. Bez tych nazw nowa wersja byłaby natychmiast wycofywana."""
+        pz.write_start_marker()
+        with open(pz.update_marker(), encoding="utf-8") as f:
+            text = f.read()
+        for old in ("1.1.1", "1.1.0"):
+            self.assertRegex(text, old.replace(".", r"\."))
+        self.assertTrue(text.split()[0] == pz.APP_VERSION)
 
     def test_a_failed_build_is_reported_once(self):
         os.makedirs(os.path.dirname(pz.update_failed_file()), exist_ok=True)
@@ -236,6 +262,8 @@ class TestStartMarker(unittest.TestCase):
             started["args"] = args
             started["flags"] = kwargs.get("creationflags", 0)
             started["env"] = kwargs.get("env")
+            for stream in ("stdin", "stdout", "stderr"):
+                started[stream] = kwargs.get(stream)
 
         pz.subprocess.Popen = fake_popen
         os.environ["_MEIPASS2"] = r"C:\gone\_MEI123"
@@ -254,7 +282,11 @@ class TestStartMarker(unittest.TestCase):
         self.assertIn(pz.NEWLINE_CRLF.encode(), raw)
         self.assertEqual(started["args"][0], "cmd.exe")
         self.assertEqual(started["args"][1], "/c")
-        self.assertTrue(started["flags"] & 0x00000008)     # DETACHED_PROCESS
+        # no console window: CREATE_NO_WINDOW, and nothing hooked up to it
+        self.assertTrue(started["flags"] & 0x08000000)     # CREATE_NO_WINDOW
+        self.assertFalse(started["flags"] & 0x00000008)    # DETACHED_PROCESS opens a new one
+        for stream in ("stdin", "stdout", "stderr"):
+            self.assertEqual(started[stream], pz.subprocess.DEVNULL)
         # nic z tego, co powie nowemu buildowi, gdzie ten się rozpakował
         env = started["env"]
         self.assertIsNotNone(env)
@@ -262,6 +294,33 @@ class TestStartMarker(unittest.TestCase):
         self.assertFalse([k for k in env if k.startswith("_PYI")])
         # ... ale reszta środowiska zostaje (PATH, APPDATA itd.)
         self.assertIn("PATH", env)
+
+    def test_the_script_waits_for_the_version_it_is_installing(self):
+        """Puszczona wersja była numerem starego builda, więc znacznik nigdy się
+        nie zgadzał i każda aktualizacja kończyła się wycofaniem."""
+        tmp = tempfile.mkdtemp(prefix="pzupd_launch_ver_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        old_localapp = os.environ.get("LOCALAPPDATA")
+        os.environ["LOCALAPPDATA"] = tmp
+        self.addCleanup(lambda: os.environ.__setitem__("LOCALAPPDATA", old_localapp)
+                        if old_localapp else os.environ.pop("LOCALAPPDATA", None))
+        original = pz.subprocess.Popen
+        pz.subprocess.Popen = lambda *a, **k: None
+        try:
+            bat = pz.launch_self_update(os.path.join(tmp, "new.exe"),
+                                        target=os.path.join(tmp, "PZUpdater.exe"),
+                                        version="9.8.7")
+        finally:
+            pz.subprocess.Popen = original
+        with open(bat, encoding="utf-8") as f:
+            script = f.read()
+        self.assertIn(".Contains('9.8.7 ')", script)
+        self.assertIn("echo 9.8.7>", script)
+        self.assertNotIn(f".Contains('{pz.APP_VERSION} ')", script)
+        # without an explicit version it falls back to the running build
+        self.assertIn(f"echo {pz.APP_VERSION}>", pz.SELF_UPDATE_SCRIPT.format(
+            target="t", new="n", pid=1, old="o", marker="m", failed="f",
+            version=pz.APP_VERSION))
 
 
 class TestTranslations(unittest.TestCase):

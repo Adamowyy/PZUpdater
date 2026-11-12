@@ -42,7 +42,7 @@ PROFILE_URL = "https://steamcommunity.com/id/AdamowY/"
 
 # Bumped by hand with every release. The running exe compares itself against the
 # newest GitHub release, so the number here has to match the tag of the build.
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.1.2"
 RELEASES_API = "https://api.github.com/repos/Adamowyy/PZUpdater/releases/latest"
 APP_EXE_NAME = "PZUpdater.exe"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION}"
@@ -1277,6 +1277,11 @@ def download_app_update(release):
 # unrelated copy of the app. A second move 2 s later covers a file the system
 # still holds for a moment; if every try fails it gives up, and because the old
 # file was never touched the app the user has still runs.
+#
+# Nothing here may show a console: the script is started with
+# CREATE_NO_WINDOW, its `ping` is a sleep that needs no console input (unlike
+# `timeout`), and the readiness check is a plain .Contains() instead of a
+# regex, so a version like 1.1.1 cannot be read as a pattern.
 NEWLINE_CRLF = chr(13) + chr(10)      # a batch file needs real CRLF, whatever this file uses
 
 SELF_UPDATE_SCRIPT = NEWLINE_CRLF.join([
@@ -1298,12 +1303,12 @@ SELF_UPDATE_SCRIPT = NEWLINE_CRLF.join([
     "if not errorlevel 1 goto start",
     "set /a tries+=1",
     "if %tries% geq 15 exit /b 1",
-    "timeout /t 1 /nobreak >nul",
+    "ping -n 2 127.0.0.1 >nul",
     "goto move",
     ":start",
     "del /q \"%MARKER%\" >nul 2>&1",
     "start \"\" \"%TARGET%\"",
-    "powershell -NoProfile -WindowStyle Hidden -Command \"for($i=0;$i -lt 30;$i++){{ Start-Sleep -Milliseconds 500; if(Test-Path '{marker}'){{ if((Get-Content -Raw '{marker}') -match '{version}'){{ exit 0 }} }} }}; exit 1\"",
+    "powershell -NoProfile -WindowStyle Hidden -Command \"for($i=0;$i -lt 120;$i++){{ Start-Sleep -Milliseconds 500; if(Test-Path '{marker}'){{ if((Get-Content -Raw '{marker}').Contains('{version} ')){{ exit 0 }} }} }}; exit 1\"",
     "if not errorlevel 1 goto done",
     "copy /y \"%OLD%\" \"%TARGET%\" >nul 2>&1",
     "echo {version}> \"%FAILED%\"",
@@ -1323,12 +1328,21 @@ def update_failed_file():
     return os.path.join(update_dir(), "failed.txt")
 
 
+# Builds up to 1.1.1 wait for the number of the build that *started* them to
+# show up in this marker, so an update from them rolls back a new build that is
+# running fine. Naming the previous release here lets their swap script see its
+# own version and finish, which is the only way this fix can reach people
+# automatically. Harmless afterwards: nothing else reads this file.
+MARKER_ALSO_NAMES = ("1.1.1", "1.1.0")
+
+
 def write_start_marker():
     """Zapisuje znacznik startu; brak zapisu nie może przewrócić aplikacji."""
     try:
         os.makedirs(update_dir(), exist_ok=True)
+        names = " ".join((APP_VERSION,) + MARKER_ALSO_NAMES)
         with open(update_marker(), "w", encoding="utf-8") as f:
-            f.write(f"{APP_VERSION} {datetime.datetime.now().isoformat(timespec='seconds')}")
+            f.write(f"{names} {datetime.datetime.now().isoformat(timespec='seconds')}")
     except OSError:
         pass
 
@@ -1349,13 +1363,20 @@ def clear_update_failed():
         pass
 
 
-def launch_self_update(new_exe, target=None):
-    """Starts the swap script for a new exe; the caller has to exit afterwards."""
+def launch_self_update(new_exe, target=None, version=None):
+    """Starts the swap script for a new exe; the caller has to exit afterwards.
+
+    `version` is the version of the *new* build: the script waits for the
+    restarted app to write that version into the start marker, and rolls back
+    when it never does. Passing the running build's number instead makes every
+    update look like a failure - the old number never shows up in the marker.
+    """
     target = os.path.abspath(target or app_exe_path())
+    wanted = re.sub(r"[^0-9A-Za-z._-]", "", str(version or APP_VERSION)) or APP_VERSION
     script = SELF_UPDATE_SCRIPT.format(
         target=target, new=os.path.abspath(new_exe), pid=os.getpid(),
         old=target + ".old", marker=update_marker(), failed=update_failed_file(),
-        version=APP_VERSION)
+        version=wanted)
     os.makedirs(update_dir(), exist_ok=True)
     bat = os.path.join(update_dir(), "apply_update.bat")
     # newline="" keeps the CRLF that is already in the script
@@ -1368,8 +1389,13 @@ def launch_self_update(new_exe, target=None):
            if k != "_MEIPASS2" and not k.startswith("_PYI")}
     flags = 0
     if os.name == "nt":
-        flags = 0x00000008 | 0x00000200    # DETACHED_PROCESS | NEW_PROCESS_GROUP
-    subprocess.Popen(["cmd.exe", "/c", bat], creationflags=flags, close_fds=True, env=env)
+        # CREATE_NO_WINDOW, not DETACHED_PROCESS: a detached cmd has no console
+        # of its own, so Windows hands it a brand new one - the console window
+        # users saw flash up during an update.
+        flags = 0x08000000 | 0x00000200    # CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP
+    subprocess.Popen(["cmd.exe", "/c", bat], creationflags=flags, close_fds=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                     stderr=subprocess.DEVNULL, env=env)
     return bat
 
 
@@ -2899,14 +2925,14 @@ class PZUpdaterApp:
                 return
             self.set_status_key("msg.app_update_ready", release["version"])
             self._log("INFO", self.t("msg.app_update_ready", release["version"]))
-            self.root.after(400, lambda: self._quit_for_update(result))
+            self.root.after(400, lambda: self._quit_for_update(result, release["version"]))
 
         self._run_async(work, on_done)
 
-    def _quit_for_update(self, new_exe):
+    def _quit_for_update(self, new_exe, version=None):
         """Starts the swapper and closes the window so the exe can be replaced."""
         try:
-            launch_self_update(new_exe)
+            launch_self_update(new_exe, version=version)
         except Exception as e:  # noqa: BLE001 - the app must survive a bad update
             self._error(self.t("msg.update_failed", self._error_text(e)))
             return
