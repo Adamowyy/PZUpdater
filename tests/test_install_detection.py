@@ -590,6 +590,7 @@ class TestDeprecatedRow(unittest.TestCase):
             self.obsolete = obsolete
             self.paths = {"workshop": {"zombiebuddy_fix": "ws"}}
             self.steam_info = {}
+            self.steam_failed = set()
             self.state = {"mods": {}}
             self._repair = None
 
@@ -665,6 +666,7 @@ def headless_app(game, ws_map, state=None):
         def __init__(self):
             self.paths = {"game_dir": game, "workshop": ws_map}
             self.steam_info = {}
+            self.steam_failed = set()
             self.state = state or {"mods": {}}
             self._sources = pz.accepted_sources(pz.UPDATABLE_MODS, ws_map)
             self._repair = None

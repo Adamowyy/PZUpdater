@@ -126,6 +126,7 @@ class TestIsObsolete(TempCase):
         self.ws_fix = self.p("ws_fix")
         self.steam_info = {self.base["workshop_id"]: {"time_updated": 200},
                            self.fix["workshop_id"]: {"time_updated": 100}}
+        self.steam_failed = set()
 
     def tearDown(self):
         pz.UPDATABLE_MODS = self._registry

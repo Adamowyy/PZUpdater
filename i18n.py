@@ -62,6 +62,7 @@ STRINGS = {
         "status.build_unverified": "Start the game once after the update",
         "status.repair_needed": "Blocks the game from starting",
         "status.signed_jar": "Cannot be used with this game build",
+        "status.no_steam_data": "Steam has no data for it",
 
         # card details line
         "detail.workshop": "Workshop {}",
@@ -88,6 +89,7 @@ STRINGS = {
         # status bar / results
         "msg.checking": "Checking for updates…",
         "msg.check_failed": "Check failed: {}",
+        "msg.check_no_data": "Steam has no data for: {} - check the id or remove it",
         "msg.check_failed_details": "Update check failed: {}",
         "msg.to_install": "to install: {}",
         "msg.new_update": "new update: {}",
@@ -247,6 +249,7 @@ STRINGS = {
         "status.build_unverified": "Uruchom grę raz po aktualizacji",
         "status.repair_needed": "Blokuje uruchomienie gry",
         "status.signed_jar": "Niezgodne z tym buildem gry",
+        "status.no_steam_data": "Steam nie ma danych",
 
         # card details line
         "detail.workshop": "Workshop {}",
@@ -273,6 +276,7 @@ STRINGS = {
         # status bar / results
         "msg.checking": "Sprawdzam aktualizacje…",
         "msg.check_failed": "Błąd sprawdzania: {}",
+        "msg.check_no_data": "Steam nie ma danych dla: {} — sprawdź id albo usuń pozycję",
         "msg.check_failed_details": "Błąd sprawdzania aktualizacji: {}",
         "msg.to_install": "do instalacji: {}",
         "msg.new_update": "nowa aktualizacja: {}",

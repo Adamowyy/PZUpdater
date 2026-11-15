@@ -279,6 +279,7 @@ class TestRowStatus(RepairCase):
             self.paths = {"game_dir": game, "workshop": workshop,
                           "libraries": list(libraries)}
             self.steam_info = {}
+            self.steam_failed = set()
             self.state = {"mods": {}}
             self._sources = pz.accepted_sources(pz.UPDATABLE_MODS, workshop)
             self._repair = None

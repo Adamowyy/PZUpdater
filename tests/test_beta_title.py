@@ -26,6 +26,7 @@ class BetaTitle(unittest.TestCase):
         def __init__(self, versions, language="pl"):
             self.versions = versions
             self.steam_info = {}
+            self.steam_failed = set()
             self.t = i18n.Translator(language)
 
         def _jar_version_of(self, mod):

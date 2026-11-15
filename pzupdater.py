@@ -42,7 +42,7 @@ PROFILE_URL = "https://steamcommunity.com/id/AdamowY/"
 
 # Bumped by hand with every release. The running exe compares itself against the
 # newest GitHub release, so the number here has to match the tag of the build.
-APP_VERSION = "1.1.2"
+APP_VERSION = "1.1.3"
 RELEASES_API = "https://api.github.com/repos/Adamowyy/PZUpdater/releases/latest"
 APP_EXE_NAME = "PZUpdater.exe"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION}"
@@ -281,6 +281,24 @@ def steam_get_details(workshop_id):
         "time_updated": int(d.get("time_updated", 0)),
         "time_created": int(d.get("time_created", 0)),
     }
+
+
+def fetch_details(workshop_ids, on_progress=None):
+    """{id: details}, {id: exception} for a whole list of workshop items.
+
+    One dead id - a deleted item, a hidden one, a typo in a watched id - must not
+    take the timestamps of every other row down with it, so the failures are
+    collected and the loop carries on.
+    """
+    out, failed = {}, {}
+    for i, wid in enumerate(workshop_ids, 1):
+        if on_progress is not None:
+            on_progress(i, len(workshop_ids))
+        try:
+            out[wid] = steam_get_details(wid)
+        except Exception as e:  # noqa: BLE001 - reported per id, not raised
+            failed[wid] = e
+    return out, failed
 
 
 def fmt_ts(ts):
@@ -1333,7 +1351,7 @@ def update_failed_file():
 # running fine. Naming the previous release here lets their swap script see its
 # own version and finish, which is the only way this fix can reach people
 # automatically. Harmless afterwards: nothing else reads this file.
-MARKER_ALSO_NAMES = ("1.1.1", "1.1.0")
+MARKER_ALSO_NAMES = ("1.1.2", "1.1.1", "1.1.0")
 
 
 def write_start_marker():
@@ -1463,6 +1481,9 @@ class PZUpdaterApp:
         self.manual_mods = self.state["manual_mods"]     # [{workshop_id, name}, ...]
         self.t = Translator(self.state["language"])
         self.steam_info = {}     # workshop_id -> details from the Steam API
+        # Workshop ids Steam answered nothing for (the item was deleted, hidden or
+        # is not a workshop item): no timestamp can be compared for those rows.
+        self.steam_failed = set()
 
         self._busy = False
         self._queue = queue.Queue()
@@ -2193,7 +2214,12 @@ class PZUpdaterApp:
         elif install == INSTALL_PARTIAL:
             info.update(status=self.t("status.needs_update"), tag="info", pending="install")
         elif install != INSTALL_OK or not cur:
-            info.update(status=self.t("status.pending"), tag="")
+            # No timestamp from Steam: the row cannot say if it is current, and it
+            # must not sit on the loading dots forever.
+            if not cur and mod["workshop_id"] in self.steam_failed:
+                info.update(status=self.t("status.no_steam_data"), tag="err")
+            else:
+                info.update(status=self.t("status.pending"), tag="")
         elif not saved:
             info.update(status=self.t("status.needs_update"), tag="info", pending="update")
         elif cur > saved:
@@ -2420,9 +2446,23 @@ class PZUpdaterApp:
     def _visible_mods(self):
         return [m for m in UPDATABLE_MODS if not self._is_hidden(m)]
 
+    def _names_for(self, workshop_ids):
+        """Human names for workshop ids, for the status line."""
+        out = []
+        for wid in sorted(workshop_ids):
+            mod = self._mod_by_workshop_id(wid)
+            name = self._mod_name(mod) if mod is not None else next(
+                (m["name"] for m in self.manual_mods if m["workshop_id"] == wid),
+                self.t("detail.workshop", wid))
+            out.append(f"{name} ({wid})")
+        return ", ".join(out)
+
     def _manual_status(self, m):
         details = self.steam_info.get(m["workshop_id"])
         saved = self._saved_ts(m["workshop_id"])
+        if m["workshop_id"] in self.steam_failed:
+            # Steam knows no such item: no timestamp, so no verdict about it.
+            return self.t("status.no_steam_data"), "err"
         cur = details["time_updated"] if details else 0
         if not cur:
             return self.t("status.pending"), ""
@@ -2659,14 +2699,13 @@ class PZUpdaterApp:
         self._show_overlay(self.t("overlay.progress", 0, total) if total else "")
 
         def work():
-            out = {}
-            for i, wid in enumerate(ids, 1):
+            def progress(i, total):
                 # progress goes through the queue: only the main thread touches widgets
                 self._queue.put((self._overlay_progress, (i, total)))
                 if DEBUG_SLOW_SECONDS:
                     time.sleep(DEBUG_SLOW_SECONDS)
-                out[wid] = steam_get_details(wid)
-            return out
+
+            return fetch_details(ids, progress)
 
         def on_done(result):
             self._busy = False
@@ -2679,7 +2718,17 @@ class PZUpdaterApp:
                 self._error(self.t("msg.check_failed_details", message))
                 self._reveal()
                 return
-            self.steam_info = result
+            details, failed = result
+            if failed and not details:
+                # Nothing at all came back: that is the network, not one item.
+                message = self._error_text(next(iter(failed.values())))
+                self._hide_overlay()
+                self.set_status_key("msg.check_failed", message)
+                self._error(self.t("msg.check_failed_details", message))
+                self._reveal()
+                return
+            self.steam_info = details
+            self.steam_failed = set(failed)
             self.refresh_statuses()
             self._hide_overlay_after_min_time()
             self._reveal()
@@ -2691,6 +2740,11 @@ class PZUpdaterApp:
             updates += [m["name"] for m in self.manual_mods
                         if self._manual_status(m)[1] == "new"]
             self.set_status_summary(installs, updates)
+            if self.steam_failed:
+                self.set_status_key("msg.check_no_data",
+                                    self._names_for(self.steam_failed))
+                self._log("ERROR", self.t("msg.check_no_data",
+                                          self._names_for(self.steam_failed)))
 
         self._run_async(work, on_done)
 
