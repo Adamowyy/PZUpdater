@@ -430,8 +430,9 @@ class TestBetaVisibility(unittest.TestCase):
     def test_the_beta_declares_the_release_as_its_alternative(self):
         self.assertEqual(self.BETA["alternative_to"], "3619862853")
 
-    def test_the_beta_carries_a_name_note(self):
-        self.assertEqual(self.BETA["name_note"], "mod.beta.note")
+    def test_the_beta_carries_no_remark_next_to_its_name(self):
+        self.assertNotIn("name_note", self.BETA)
+        self.assertNotIn("name_note_when_old", self.BETA)
 
 
 class TestAlternativeBuilds(TempCase):

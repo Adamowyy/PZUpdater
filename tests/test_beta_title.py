@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Tytuł wiersza BETA: „zalecany" tylko wtedy, gdy beta jest tym nowszym buildem."""
+"""Tytuł wiersza BETA: sama nazwa, bez dopisków."""
 
 import os
 import sys
@@ -11,15 +11,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import i18n
 import pzupdater as pz
 
-BETA_KEYS = ["zombiebuddy", "zombiebuddy_beta"]
-
 
 class BetaTitle(unittest.TestCase):
     """Tyle aplikacji, ile trzeba, żeby złożyć tytuł karty."""
 
     class App:
         _display_name = pz.PZUpdaterApp._display_name
-        _name_note = pz.PZUpdaterApp._name_note
         _is_hidden = pz.PZUpdaterApp._is_hidden
         _mod_name = pz.PZUpdaterApp._mod_name
 
@@ -39,39 +36,36 @@ class BetaTitle(unittest.TestCase):
         app = self.App({"zombiebuddy": release, "zombiebuddy_beta": beta}, language)
         return app._display_name(self.mod("zombiebuddy_beta")), app
 
-    def test_a_newer_beta_is_recommended(self):
-        name, app = self.title("2.3.4", "2.4.0-beta1")
-        self.assertFalse(app._is_hidden(self.mod("zombiebuddy_beta")))
-        self.assertIn(i18n.STRINGS["pl"]["mod.beta.note"], name)
-        self.assertIn("zalecany", name)
+    def test_the_beta_title_is_just_the_name(self):
+        for language in i18n.LANGUAGES:
+            name, app = self.title("2.3.4", "2.4.0-beta1", language)
+            self.assertFalse(app._is_hidden(self.mod("zombiebuddy_beta")))
+            self.assertEqual(name, self.mod("zombiebuddy_beta")["name"])
 
-    def test_a_release_that_passes_the_beta_drops_the_word(self):
-        name, app = self.title("2.4.0", "2.3.4")
+    def test_no_remark_anywhere_in_the_title(self):
+        for language in i18n.LANGUAGES:
+            for release, beta in (("2.3.4", "2.4.0-beta1"), ("2.4.0", "2.3.4")):
+                name, _app = self.title(release, beta, language)
+                for word in ("zalecany", "recommended", "opcjonalny", "optional"):
+                    self.assertNotIn(word, name.lower(), f"{language}: {release}/{beta}")
+
+    def test_a_release_that_passes_the_beta_still_hides_it(self):
+        _name, app = self.title("2.4.0", "2.3.4")
         self.assertTrue(app._is_hidden(self.mod("zombiebuddy_beta")))
-        self.assertNotIn("zalecany", name)
-        self.assertIn("(opcjonalny)", name)
 
-    def test_the_same_version_is_not_enough_to_stay_recommended(self):
-        name, _app = self.title("2.4.0", "2.4.0")
-        self.assertNotIn("zalecany", name)
-
-    def test_english_drops_the_word_too(self):
-        name, _app = self.title("2.4.0", "2.3.4", "en")
-        self.assertNotIn("recommended", name)
-        self.assertIn("(optional)", name)
-
-    def test_english_keeps_it_while_the_beta_leads(self):
-        name, _app = self.title("2.3.4", "2.4.0-beta1", "en")
-        self.assertIn("recommended", name)
+    def test_the_same_version_is_not_enough_to_stay_visible(self):
+        _name, app = self.title("2.4.0", "2.4.0")
+        self.assertTrue(app._is_hidden(self.mod("zombiebuddy_beta")))
 
     def test_a_mod_without_a_remark_is_just_its_name(self):
         app = self.App({})
         self.assertEqual(app._display_name(self.mod("tempo_patches")),
                          self.mod("tempo_patches")["name"])
 
-    def test_both_languages_have_the_plain_note(self):
-        for language in i18n.LANGUAGES:
-            self.assertIn("mod.beta.note_plain", i18n.STRINGS[language], language)
+    def test_no_mod_carries_a_name_note_anymore(self):
+        for mod in pz.UPDATABLE_MODS:
+            self.assertNotIn("name_note", mod, mod["key"])
+            self.assertNotIn("name_note_when_old", mod, mod["key"])
 
 
 if __name__ == "__main__":

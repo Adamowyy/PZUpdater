@@ -42,6 +42,7 @@ STRINGS = {
         "btn.app_update": "↑ Update to {}",
         "btn.update_now": "Update now",
         "btn.later": "Later",
+        "btn.jvm": "Memory (JVM)",
 
         # status badges
         "status.not_subscribed": "Not subscribed",
@@ -115,6 +116,7 @@ STRINGS = {
         "msg.update_failed_log": "Failed to update — {}",
         "msg.start": "Start — Steam: {}",
         "msg.game_dir": "Game: {}",
+        "msg.jvm_set": "Wrote -Xmx{}g and G1 into ProjectZomboid64.json.",
         "msg.removing_one": "Removing: {}…",
         "msg.remove_failed": "Removal failed: {}",
         "msg.repairing": "Repairing the game folder…",
@@ -156,11 +158,24 @@ STRINGS = {
 
         # errors
         "error.steam_no_data": "Steam returned no data for workshop item {}.",
+        "error.no_launcher_config": "ProjectZomboid64.json is not in the game folder.",
 
         # dialogs
         "dialog.add.title": "Add mod",
         "dialog.add.label": "Workshop ID of the mod:",
         "dialog.add.placeholder": "e.g. 3807349984",
+        "jvm.title": "Game memory and GC",
+        "jvm.body":
+            "A game update puts the launcher back to stock: 3 GB and the game's own "
+            "collector. This writes one memory flag and G1, which keeps big hordes "
+            "from stalling. Takes effect on the next start.",
+        "jvm.current": "Now: {}, {}.",
+        "jvm.ram_label": "RAM, GB:",
+        "jvm.apply": "Apply",
+        "jvm.bad_ram": "Give {}–{} GB.",
+        "jvm.saved": "Done: {} GB with G1.",
+        "jvm.gone": "The game update reset the memory settings ({} GB, G1) — set them again.",
+        "jvm.none": "none",
         "dialog.remove.title": "Uninstall",
         "dialog.remove.body": "Remove the files of \"{}\" ({}) from the game folder?",
         "dialog.repair.title": "The game will not start",
@@ -187,10 +202,6 @@ STRINGS = {
             "Options, and paste the line below. The two dashes at the end belong to "
             "it, keep them.",
         "notice.zombiebuddy_launch_options.value": "-agentlib:zbNative --",
-
-        # short remarks shown next to a mod's name (mod entry field "name_note")
-        "mod.beta.note": "(optional, recommended)",
-        "mod.beta.note_plain": "(optional)",
 
         # unsubscribe the other half of the pair
         "notice.unsub.text":
@@ -229,6 +240,7 @@ STRINGS = {
         "btn.app_update": "↑ Aktualizuj do {}",
         "btn.update_now": "Aktualizuj teraz",
         "btn.later": "Później",
+        "btn.jvm": "Pamięć (JVM)",
 
         # status badges
         "status.not_subscribed": "Brak subskrypcji",
@@ -302,6 +314,7 @@ STRINGS = {
         "msg.update_failed_log": "Nie udało się zaktualizować — {}",
         "msg.start": "Start — Steam: {}",
         "msg.game_dir": "Gra: {}",
+        "msg.jvm_set": "Wpisano -Xmx{}g i G1 do ProjectZomboid64.json.",
         "msg.removing_one": "Usuwam: {}…",
         "msg.remove_failed": "Błąd usuwania: {}",
         "msg.repairing": "Naprawiam folder gry…",
@@ -343,11 +356,24 @@ STRINGS = {
 
         # errors
         "error.steam_no_data": "Steam nie zwrócił danych dla warsztatu {}.",
+        "error.no_launcher_config": "Brak pliku ProjectZomboid64.json w folderze gry.",
 
         # dialogs
         "dialog.add.title": "Dodaj mod",
         "dialog.add.label": "Workshop ID moda:",
         "dialog.add.placeholder": "np. 3807349984",
+        "jvm.title": "Pamięć gry i GC",
+        "jvm.body":
+            "Aktualizacja gry przywraca ustawienia startowe: 3 GB i własny kolektor "
+            "gry. To wpisuje limit pamięci i G1, który ogranicza zacięcia przy "
+            "dużych hordach. Działa od następnego startu.",
+        "jvm.current": "Teraz: {}, {}.",
+        "jvm.ram_label": "RAM, GB:",
+        "jvm.apply": "Zastosuj",
+        "jvm.bad_ram": "Podaj {}–{} GB.",
+        "jvm.saved": "Gotowe: {} GB z G1.",
+        "jvm.gone": "Aktualizacja gry skasowała ustawienia pamięci ({} GB, G1) — ustaw je ponownie.",
+        "jvm.none": "brak",
         "dialog.remove.title": "Odinstaluj",
         "dialog.remove.body": "Usunąć pliki moda \"{}\" ({}) z folderu gry?",
         "dialog.repair.title": "Gra się nie uruchomi",
@@ -375,10 +401,6 @@ STRINGS = {
             "Właściwości, potem Opcje uruchamiania i wklej poniższą linię. Dwie "
             "kreski na końcu są jej częścią, nie usuwaj ich.",
         "notice.zombiebuddy_launch_options.value": "-agentlib:zbNative --",
-
-        # short remarks shown next to a mod's name (mod entry field "name_note")
-        "mod.beta.note": "(opcjonalny, zalecany)",
-        "mod.beta.note_plain": "(opcjonalny)",
 
         # unsubscribe the other half of the pair
         "notice.unsub.text":

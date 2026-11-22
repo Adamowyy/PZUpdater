@@ -42,7 +42,7 @@ PROFILE_URL = "https://steamcommunity.com/id/AdamowY/"
 
 # Bumped by hand with every release. The running exe compares itself against the
 # newest GitHub release, so the number here has to match the tag of the build.
-APP_VERSION = "1.1.3"
+APP_VERSION = "1.1.4"
 RELEASES_API = "https://api.github.com/repos/Adamowyy/PZUpdater/releases/latest"
 APP_EXE_NAME = "PZUpdater.exe"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION}"
@@ -62,9 +62,6 @@ UPDATABLE_MODS = [
         "files": ["ZombieBuddy.jar", "zbNative.dll"],
         # the loader does nothing until the game starts with the agent launch option
         "notice": "zombiebuddy_launch_options",
-        # Zed's Better FPS patches the game through ZombieBuddy: while it is
-        # subscribed the row says the loader is required for it.
-        "required_by": [{"workshop_id": "3622986450", "name": "Zed's Better FPS"}],
         "help": {
             "en": "Copies ZombieBuddy.jar and zbNative.dll into the game folder "
                   "(the Java mod loader).",
@@ -80,12 +77,8 @@ UPDATABLE_MODS = [
         "src_dir": os.path.join("mods", "ZombieBuddy", "libs"),
         "files": ["ZombieBuddy.jar", "zbNative.dll"],
         "notice": "zombiebuddy_launch_options",
-        "required_by": [{"workshop_id": "3622986450", "name": "Zed's Better FPS"}],
         "visible_if_newer_than": "3619862853",
         "alternative_to": "3619862853",
-        "name_note": "mod.beta.note",
-        # Once the release is the newer build the beta is no longer the one to take.
-        "name_note_when_old": "mod.beta.note_plain",
         "help": {
             "en": "Beta of the next ZombieBuddy release. It installs the same two "
                   "files and replaces the release build, so the two can never be "
@@ -415,6 +408,10 @@ def load_state():
     state.setdefault("repair_shown_for", None)
     # release the user said "later" to, so a newer one is offered again
     state.setdefault("app_update_skipped", None)
+    # {"ram_gb": N} once the app wrote the launcher flags, so a game update that
+    # puts the file back to stock can be reported instead of passing unnoticed
+    if not isinstance(state.get("jvm"), dict):
+        state["jvm"] = {}
     if "manual_mods" not in state:
         state["manual_mods"] = list(DEFAULT_MANUAL_MODS)
     # mod cards folded down to their title (a mod nobody uses)
@@ -891,6 +888,110 @@ def jar_info(game_dir):
                 "top": top}
     JAR_INFO_CACHE[key] = info
     return info
+
+
+# --- the launcher config a game update puts back to stock --------------------
+JVM_CONFIG_NAME = "ProjectZomboid64.json"
+JVM_GC_ARG = "-XX:+UseG1GC"
+JVM_RAM_ARG = re.compile(r"^-Xmx\d+[kKmMgG]?$")
+JVM_GC_SELECTOR = re.compile(r"^-XX:\+Use\w*GC$")
+JVM_RAM_LIMITS = (2, 64)      # GB
+
+
+def jvm_ram_gb(vm_args):
+    """RAM the launcher asks for, in GB (3072m reads as 3), or None."""
+    for arg in vm_args or []:
+        if not JVM_RAM_ARG.match(arg):
+            continue
+        value = arg[4:].lower()
+        try:
+            number = int(value[:-1]) if value[-1] in "kmg" else int(value)
+        except ValueError:
+            return None
+        return number // 1024 if value.endswith("m") else number
+    return None
+
+
+def jvm_gc(vm_args):
+    """Collector a list of args selects ("G1GC", "ZGC"...), or None."""
+    for arg in vm_args or []:
+        if JVM_GC_SELECTOR.match(arg):
+            return arg[len("-XX:+Use"):]
+    return None
+
+
+def jvm_settings(vm_args, ram_gb):
+    """The vmArgs list with one -Xmx for that RAM and G1 as the only collector.
+
+    The game ships its own collector in a per-Windows "windows" bucket, and two
+    collectors on one command line stop the JVM; jvm_apply_config() clears those
+    buckets too. Both flags go first so a second run produces the same file.
+    """
+    args = [a for a in (vm_args or [])
+            if not JVM_RAM_ARG.match(a) and not JVM_GC_SELECTOR.match(a)]
+    return [JVM_GC_ARG, f"-Xmx{ram_gb}g"] + args
+
+
+def jvm_config_path(game_dir):
+    return os.path.join(game_dir, JVM_CONFIG_NAME) if game_dir else None
+
+
+def jvm_current(game_dir):
+    """{"ram_gb", "gc", "path"} of the launcher as it sits on disk right now."""
+    out = {"ram_gb": None, "gc": None, "path": jvm_config_path(game_dir)}
+    try:
+        with open(out["path"], encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError, TypeError):
+        return out
+    args = data.get("vmArgs") or []
+    out["ram_gb"], out["gc"] = jvm_ram_gb(args), jvm_gc(args)
+    windows = data.get("windows")
+    if isinstance(windows, dict):
+        for entry in windows.values():
+            if isinstance(entry, dict):
+                # the newest bucket is the one this Windows version runs
+                out["gc"] = jvm_gc(entry.get("vmArgs")) or out["gc"]
+    return out
+
+
+def jvm_verdict(current, wanted_gb=None):
+    """Whether the launcher still carries what the app wrote.
+
+    "ok" - G1 and the same RAM, "gone" - it was written before and a game update
+    reset the file, "none" - the launcher was never touched.
+    """
+    ram, gc = current.get("ram_gb"), current.get("gc")
+    if gc == "G1GC" and ram and (wanted_gb is None or ram == wanted_gb):
+        return "ok"
+    return "gone" if wanted_gb else "none"
+
+
+def jvm_apply_config(game_dir, ram_gb):
+    """Write -Xmx<ram>g and G1 into the launcher, keeping a backup of the file."""
+    path = jvm_config_path(game_dir)
+    if not path or not os.path.isfile(path):
+        raise UpdaterError("error.no_launcher_config")
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+    data["vmArgs"] = jvm_settings(data.get("vmArgs"), ram_gb)
+    windows = data.get("windows")
+    if isinstance(windows, dict):
+        for entry in windows.values():
+            if isinstance(entry, dict) and isinstance(entry.get("vmArgs"), list):
+                entry["vmArgs"] = [a for a in entry["vmArgs"]
+                                   if not JVM_GC_SELECTOR.match(a)]
+
+    backup_dir = os.path.join(os.path.dirname(state_path()), "jvm_backup")
+    os.makedirs(backup_dir, exist_ok=True)
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = os.path.join(backup_dir, f"{JVM_CONFIG_NAME}.{stamp}.bak")
+    shutil.copy2(path, backup)
+
+    with open(path, "w", encoding="utf-8", newline="\n") as fh:
+        json.dump(data, fh, indent="\t")
+        fh.write("\n")
+    return {"path": path, "backup": backup}
 
 
 def loose_classes(game_dir):
@@ -1432,6 +1533,7 @@ ACCENT_HOVER = "#2563eb"
 ON_ACCENT = "#ffffff"
 DANGER = "#dc2626"      # the uninstall button: the only action that deletes
 ALERT = "#f87171"       # a detail line that has to be read: which build is ahead
+GOOD = "#4ade80"        # a check that passed: the launcher still carries the flags
 WARN = "#f59e0b"        # an action that may break the game: installing a signed-jar mod
 WARN_HOVER = "#d97706"
 ON_WARN = "#20140a"     # dark text, because white on amber is unreadable
@@ -1581,10 +1683,9 @@ class PZUpdaterApp:
     def _requirements(self, mod, present):
         """How loudly this mod has to say another one needs it.
 
-        Zed's Better FPS patches the game through ZombieBuddy: while it is
-        subscribed and the loader's files are not in the game folder the row says
-        so in red, and with both in place the word fades to grey. Without Better
-        FPS nothing is said at all - nobody needs the loader here.
+        A mod entry marks that with "required_by"; while the companion is not
+        subscribed nothing is said at all, otherwise the row names it (red while
+        the mod's own files are not in the game folder, grey once they are).
         """
         out = []
         for need in mod.get("required_by") or ():
@@ -1786,6 +1887,14 @@ class PZUpdaterApp:
             corner_radius=10, font=self.f_button,
             command=self.do_update)
         self.btn_update.pack(side="left", padx=(10, 0))
+        # one click after every game update, which puts the launcher back to stock
+        self.btn_jvm = ctk.CTkButton(
+            bar, text=self.t("btn.jvm"), height=40, width=170,
+            fg_color="transparent", hover_color=CARD_SEL, text_color=TEXT,
+            border_width=1, border_color=BORDER, corner_radius=10,
+            font=self.f_button, command=self._open_jvm_settings)
+        self.btn_jvm.pack(side="right")
+        self._refresh_jvm_button()
 
         # ---- right column: watched mods (notifications only) ----
         right = ctk.CTkFrame(main, fg_color=CARD, corner_radius=14, width=330)
@@ -2077,23 +2186,8 @@ class PZUpdaterApp:
         return (details.get("title") or "").strip() or mod["name"]
 
     def _display_name(self, mod):
-        """Name for the card: the workshop title plus the remark a mod carries."""
-        note = self._name_note(mod)
-        return f"{self._mod_name(mod)} {note}".strip() if note else self._mod_name(mod)
-
-    def _name_note(self, mod):
-        """The remark after the title.
-
-        A preview row is only recommended while it is the newer build; once the
-        release passes it the word drops off and the note just says what the row
-        is.
-        """
-        key = mod.get("name_note")
-        if not key:
-            return ""
-        if mod.get("name_note_when_old") and self._is_hidden(mod):
-            key = mod["name_note_when_old"]
-        return self.t(key)
+        """Name for the card: the workshop title when Steam answered."""
+        return self._mod_name(mod)
 
     # -- game repair ----------------------------------------------------------
     def _repair_state(self):
@@ -2852,6 +2946,7 @@ class PZUpdaterApp:
         self.refresh_statuses()
         self._maybe_warn_repair()
         self._maybe_warn_update_failed()
+        self._maybe_warn_jvm()
         self._check_app_update()
 
     def _maybe_warn_update_failed(self):
@@ -3358,6 +3453,94 @@ class PZUpdaterApp:
                       command=lambda w=other["workshop_id"]:
                           self._open_url(WORKSHOP_URL.format(w))).pack(side="left")
         return dlg
+
+    def _refresh_jvm_button(self):
+        """Green while the launcher carries the flags, red once a game update took them."""
+        wanted = (self.state.get("jvm") or {}).get("ram_gb")
+        current = jvm_current(self.paths["game_dir"]) if self.paths["game_dir"] else {}
+        verdict = jvm_verdict(current, wanted)
+        label = self.t("btn.jvm")
+        text_color, border_color = {"ok": (GOOD, GOOD),
+                                    "gone": (ALERT, ALERT)}.get(verdict, (TEXT, BORDER))
+        suffix = {"ok": " ✓", "gone": " ⚠"}.get(verdict, "")
+        self.btn_jvm.configure(text=label + suffix, text_color=text_color,
+                               border_color=border_color)
+
+    def _maybe_warn_jvm(self):
+        """A game update resets the launcher: say it once per start, not every refresh."""
+        wanted = (self.state.get("jvm") or {}).get("ram_gb")
+        if not wanted or not self.paths["game_dir"]:
+            return
+        if jvm_verdict(jvm_current(self.paths["game_dir"]), wanted) == "ok":
+            return
+        message = self.t("jvm.gone", wanted)
+        self._log("WARN", message)
+        self._show_toast(message)
+
+    def _open_jvm_settings(self):
+        """RAM and collector for the launcher — a game update resets both."""
+        game = self.paths["game_dir"]
+        if not game:
+            self.set_status_key("msg.no_game_dir")
+            return
+
+        current = jvm_current(game)
+        dlg, btns = self._notice_shell(self.t("jvm.title"), self.t("jvm.body"),
+                                       width=560, height=400)
+
+        shown = ctk.CTkLabel(
+            dlg, text=self.t("jvm.current",
+                             f"{current['ram_gb']} GB" if current["ram_gb"] else self.t("jvm.none"),
+                             current["gc"] or self.t("jvm.none")),
+            font=self.f_small, text_color=MUTED, justify="left", anchor="w",
+            wraplength=500)
+        shown.pack(fill="x", padx=18, pady=(12, 10))
+
+        row = ctk.CTkFrame(dlg, fg_color="transparent")
+        row.pack(fill="x", padx=18)
+        ctk.CTkLabel(row, text=self.t("jvm.ram_label"), font=self.f_small,
+                     text_color=TEXT).pack(side="left")
+        entry = ctk.CTkEntry(row, width=90, font=self.f_small, justify="center")
+        entry.insert(0, str(current["ram_gb"] or 8))
+        entry.pack(side="left", padx=(10, 0))
+        entry.focus_set()
+
+        note = ctk.CTkLabel(dlg, text="", font=self.f_muted, text_color=MUTED,
+                            justify="left", anchor="w", wraplength=500)
+        note.pack(fill="x", padx=18, pady=(10, 0))
+
+        apply_btn = ctk.CTkButton(
+            btns, text=self.t("jvm.apply"), width=130, height=34,
+            fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=ON_ACCENT,
+            corner_radius=8, font=self.f_small)
+        apply_btn.pack(side="right", padx=(8, 0))
+
+        def apply():
+            raw = entry.get().strip().replace(",", ".")
+            try:
+                gb = int(round(float(raw)))
+            except ValueError:
+                gb = 0
+            low, high = JVM_RAM_LIMITS
+            if not low <= gb <= high:
+                note.configure(text=self.t("jvm.bad_ram", low, high), text_color=ALERT)
+                return
+            try:
+                jvm_apply_config(game, gb)
+            except (UpdaterError, OSError, ValueError) as exc:
+                text = self._error_text(exc)
+                self._log("ERROR", text)
+                note.configure(text=text, text_color=ALERT)
+                return
+            self.state["jvm"] = {"ram_gb": gb}
+            save_state(self.state)
+            self._refresh_jvm_button()
+            self._log("INFO", self.t("msg.jvm_set", gb))
+            self.set_status_key("jvm.saved", gb)
+            dlg.destroy()
+
+        apply_btn.configure(command=apply)
+        entry.bind("<Return>", lambda e: apply())
 
     def _open_console(self):
         if self._console is not None and self._console.winfo_exists():

@@ -34,8 +34,17 @@ class Requirements(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="pzupd_needs_")
         self.library = os.path.join(self.tmp, "SteamLibrary")
+        # the registry carries no "required_by" any more, so the mechanism is
+        # exercised on a copy of it with one entry marked
+        self._registry = pz.UPDATABLE_MODS
+        pz.UPDATABLE_MODS = [dict(m) for m in self._registry]
+        for mod in pz.UPDATABLE_MODS:
+            if mod["key"] in ZB_KEYS:
+                mod["required_by"] = [{"workshop_id": BETTER_FPS,
+                                       "name": "Zed's Better FPS"}]
 
     def tearDown(self):
+        pz.UPDATABLE_MODS = self._registry
         shutil.rmtree(self.tmp, ignore_errors=True)
 
     def subscribe_better_fps(self):
@@ -51,10 +60,10 @@ class Requirements(unittest.TestCase):
 
     # -- ktory mod jest oznaczony ------------------------------------------
 
-    def test_both_zombiebuddy_entries_are_required_by_better_fps(self):
-        for key in ZB_KEYS:
-            needs = self.mod(key).get("required_by") or ()
-            self.assertEqual([n["workshop_id"] for n in needs], [BETTER_FPS], key)
+    def test_no_mod_in_the_registry_claims_a_requirement(self):
+        """Wiersze ZombieBuddy nie mówią już, że wymaga ich Zed's Better FPS."""
+        for mod in self._registry:
+            self.assertIsNone(mod.get("required_by"), mod["key"])
 
     # -- trzy stany --------------------------------------------------------
 
