@@ -53,6 +53,22 @@ add the ones that can be automated safely.
   repair the game folder.
 - Updates itself: a new release of the app is downloaded and swapped in place.
 
+## Are the mods you use still alive?
+
+A returning player does not need a per-mod update check — they need to know which
+of the mods they follow stopped being maintained, because that is what breaks a
+save months later. The **Subscribed** tab lists everything the Steam account
+follows, the longest-unupdated first: yellow past half a year, red past a year,
+with the exact date of the last update next to each one.
+
+The list itself comes from Steam's `appworkshop_108600.acf`, which sits in every
+Steam library, so it is complete even offline; the dates come from the Steam API
+and are cached for half a day. **Stale only** narrows the list to the yellow and
+red rows, and clicking a row opens the mod on the workshop.
+
+The **Collections** tab takes a public collection link or id and lists its mods the
+same way, marking the ones you are not subscribed to.
+
 ## When the game stops starting after an update
 
 Build **42.22** ships a *signed* `projectzomboid.jar`. The game folder is the

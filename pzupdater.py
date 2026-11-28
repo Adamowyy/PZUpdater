@@ -42,10 +42,21 @@ PROFILE_URL = "https://steamcommunity.com/id/AdamowY/"
 
 # Bumped by hand with every release. The running exe compares itself against the
 # newest GitHub release, so the number here has to match the tag of the build.
-APP_VERSION = "1.1.5"
+APP_VERSION = "1.2.0"
 RELEASES_API = "https://api.github.com/repos/Adamowyy/PZUpdater/releases/latest"
 APP_EXE_NAME = "PZUpdater.exe"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION}"
+
+# The three panels the window switches between, in the order of the tab bar.
+VIEWS = ("updates", "subscribed", "collections")
+TAB_KEYS = {"updates": "tab.updates", "subscribed": "tab.subscribed",
+            "collections": "tab.collections"}
+# Workshop timestamps are cached on disk, so opening the list twice in a session
+# does not hammer the API; past this age the list refreshes itself in the background.
+SUBS_CACHE_SECONDS = 12 * 3600
+# Rendering one widget triple per mod is what costs, and a big collection holds
+# hundreds; the list shows the oldest ones, which are the ones worth reading.
+MOD_ROW_LIMIT = 150
 
 
 # Only mods that need a manual install belong here, not a plain subscription.
@@ -260,6 +271,198 @@ def fmt_ts(ts):
     if not ts:
         return "—"
     return datetime.datetime.fromtimestamp(ts).strftime("%d.%m.%Y %H:%M")
+
+
+# Subscribed mods and workshop collections
+
+STEAM_COLLECTION_API = (
+    "https://api.steampowered.com/ISteamRemoteStorage/GetCollectionDetails/v1/"
+)
+# A mod nobody has touched for half a year is a yellow flag on the list, a year
+# or more is red: a returning player reads those as "this may not work anymore".
+STALE_YELLOW_DAYS = 180
+STALE_RED_DAYS = 365
+
+
+def _steam_post(url, fields, timeout=20):
+    body = urllib.parse.urlencode(fields).encode()
+    req = urllib.request.Request(
+        url, data=body,
+        headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def parse_appworkshop(text):
+    """{workshop id: {"timeupdated": int, "size": int}} from an appworkshop file.
+
+    Steam keeps the local subscription list in `appworkshop_<appid>.acf` as a
+    VDF map, so it can be read without the Steam client and without login.
+    """
+    start = text.find('"WorkshopItemsInstalled"')
+    if start < 0:
+        return {}
+    section = text[start:]
+    # WorkshopItemDetails (other apps' items) follows the installed map
+    end = section.find('"WorkshopItemDetails"')
+    if end > 0:
+        section = section[:end]
+    out = {}
+    for m in re.finditer(r'"(\d{6,})"\s*\{(.*?)\}', section, re.S):
+        wid, body = m.group(1), m.group(2)
+
+        def num(name):
+            found = re.search(r'"%s"\s+"?(\d+)"?' % name, body)
+            return int(found.group(1)) if found else 0
+
+        out[wid] = {"timeupdated": num("timeupdated"), "size": num("size")}
+    return out
+
+
+def workshop_state_files(libraries):
+    """Every appworkshop file the Steam libraries hold (one per library)."""
+    out = []
+    for lib in libraries or []:
+        p = os.path.join(lib, "steamapps", "workshop", "appworkshop_%s.acf" % APP_ID)
+        if os.path.isfile(p):
+            out.append(p)
+    return out
+
+
+def subscribed_items(libraries):
+    """{workshop id: {"timeupdated", "size"}} for everything the account follows.
+
+    A game on more than one drive has one file per library, so the maps are
+    merged and the newest timestamp wins.
+    """
+    out = {}
+    for path in workshop_state_files(libraries):
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            continue
+        for wid, info in parse_appworkshop(text).items():
+            old = out.get(wid)
+            if old is None or info["timeupdated"] > old["timeupdated"]:
+                out[wid] = info
+    return out
+
+
+def steam_batch_details(workshop_ids, chunk=200, on_progress=None):
+    """({id: details}, {id: exception}) for a long list, a hundred ids per call.
+
+    One chunk Steam refuses must not blank the whole list, so the failures are
+    collected and the remaining chunks still run.
+    """
+    ids = [str(w) for w in workshop_ids]
+    out, failed = {}, {}
+    for start in range(0, len(ids), chunk):
+        part = ids[start:start + chunk]
+        if on_progress is not None:
+            on_progress(start, len(ids))
+        fields = {"itemcount": str(len(part))}
+        for i, wid in enumerate(part):
+            fields["publishedfileids[%d]" % i] = wid
+        try:
+            data = _steam_post(STEAM_API, fields)
+            items = data.get("response", {}).get("publishedfiledetails") or []
+        except Exception as e:  # noqa: BLE001 - reported per id, not raised
+            for wid in part:
+                failed[wid] = e
+            continue
+        answered = set()
+        for d in items:
+            wid = str(d.get("publishedfileid", ""))
+            if wid not in part:
+                continue
+            answered.add(wid)
+            if d.get("result") != 1:
+                failed[wid] = UpdaterError("error.steam_no_data", wid)
+                continue
+            out[wid] = {
+                "title": d.get("title", ""),
+                "time_updated": int(d.get("time_updated", 0)),
+                "time_created": int(d.get("time_created", 0)),
+            }
+        for wid in part:
+            if wid not in answered:
+                failed[wid] = UpdaterError("error.steam_no_data", wid)
+    if on_progress is not None:
+        on_progress(len(ids), len(ids))
+    return out, failed
+
+
+def steam_collection(collection_id):
+    """{"title": str, "children": [workshop id, ...]} of a public collection."""
+    fields = {"collectioncount": "1", "publishedfileids[0]": str(collection_id)}
+    try:
+        data = _steam_post(STEAM_COLLECTION_API, fields)
+        coll = (data.get("response", {}).get("collectiondetails") or [{}])[0]
+    except Exception as e:  # noqa: BLE001 - shown as one sentence in the window
+        raise UpdaterError("error.collection_failed", str(e))
+    if coll.get("result") != 1:
+        raise UpdaterError("error.collection_missing", collection_id)
+    children = [str(c["publishedfileid"]) for c in coll.get("children") or []
+                if c.get("publishedfileid")]
+    # the collection's own title only comes with the item details
+    details, _failed = steam_batch_details([str(collection_id)])
+    title = (details.get(str(collection_id)) or {}).get("title", "")
+    return {"title": title, "children": children}
+
+
+def parse_collection_id(text):
+    """A collection id from a bare number or a workshop link, None otherwise."""
+    found = re.search(r"(\d{6,})", str(text or "").strip())
+    return found.group(1) if found else None
+
+
+def age_days(ts, now=None):
+    """Whole days since a Steam timestamp, None when there is no timestamp."""
+    if not ts:
+        return None
+    return max(0, int(((now or time.time()) - ts) // 86400))
+
+
+def stale_level(ts, now=None):
+    """'red' past a year without updates, 'yellow' past half a year, else None."""
+    days = age_days(ts, now)
+    if days is None:
+        return None
+    if days >= STALE_RED_DAYS:
+        return "red"
+    if days >= STALE_YELLOW_DAYS:
+        return "yellow"
+    return None
+
+
+def age_text(days, t):
+    """'8 mo ago' / '8 mies. temu' - months never need a plural agreement."""
+    if days is None:
+        return "—"
+    if days < 30:
+        return t("age.days", days)
+    return t("age.months", days // 30)
+
+
+def oldest_first(rows):
+    """Mod rows sorted the way both list views show them: oldest update on top.
+
+    A row Steam has not answered for has no timestamp and goes to the bottom,
+    otherwise it would sit above the mods that actually need looking at.
+    """
+    return sorted(rows, key=lambda r: (0, r["time_updated"]) if r["time_updated"] else (1, 0))
+
+
+def stale_count(rows, now=None):
+    """How many rows went a year or more without an update."""
+    return sum(1 for r in rows if stale_level(r["time_updated"], now) == "red")
+
+
+def unreadable_text(count, t):
+    """'1 mod could not be read' / '3 mods could not be read' - number agreement."""
+    return t("msg.subs_failed_one") if count == 1 else t("msg.subs_failed", count)
 
 
 # Version folders
@@ -1482,6 +1685,16 @@ class PZUpdaterApp:
         self._repair = None       # cached {"signed", "files", "by_mod", "unknown"}
         self._app_update = None   # newer release offered by GitHub, if any
 
+        # tabs: which panel is open and what the two list views hold
+        self._view = "updates"
+        self._views = {}
+        self.subs_items = {}      # workshop id -> {"title", "time_updated"} from Steam
+        self._subs_ids = set()    # ids the local workshop file lists as subscribed
+        self.subs_stale_only = False
+        self._subs_loading = False
+        self.coll_result = None   # {"id", "title", "children", "details", "failed"}
+        self._coll_loading = False
+
         self.paths = self._detect()
         self._sources = {}       # {target path: acceptable sources}, refreshed per check
         self._refresh_sources()
@@ -1633,6 +1846,8 @@ class PZUpdaterApp:
         self._select(self._selected or UPDATABLE_MODS[0]["key"])
         self.refresh_statuses()
         self._restore_status_text()
+        # the lists are rebuilt from memory, with no Steam call on a language change
+        self._show_view(self._view, load=False)
 
     # -- UI -------------------------------------------------------------------
     def _build_ui(self):
@@ -1708,8 +1923,30 @@ class PZUpdaterApp:
         ctk.CTkLabel(head, text=self.t("app.tagline"), font=self.f_sub,
                      text_color=MUTED).pack(anchor="w", pady=(2, 0))
 
-        main = ctk.CTkFrame(self.root, fg_color="transparent")
-        main.pack(fill="both", expand=True, padx=20)
+        # One bar switches between the updater itself, every subscription and the
+        # mods of a public collection - three separate panels, one window.
+        self.tab_bar = ctk.CTkSegmentedButton(
+            head, values=self._tab_values(), font=self.f_muted, height=30,
+            corner_radius=8, fg_color=CARD, selected_color=CARD_SEL,
+            selected_hover_color=BORDER, unselected_color=CARD,
+            unselected_hover_color=CARD_SEL, text_color=TEXT, command=self._on_tab)
+        self.tab_bar.set(self.t(TAB_KEYS[self._view]))
+        self.tab_bar.pack(anchor="w", pady=(10, 0))
+
+        self.body = ctk.CTkFrame(self.root, fg_color="transparent")
+        self.body.pack(fill="both", expand=True, padx=20)
+
+        self.view_updates = ctk.CTkFrame(self.body, fg_color="transparent")
+        self.view_subs = ctk.CTkFrame(self.body, fg_color="transparent")
+        self.view_collections = ctk.CTkFrame(self.body, fg_color="transparent")
+        self._views = {"updates": self.view_updates, "subscribed": self.view_subs,
+                       "collections": self.view_collections}
+        self._views[self._view].pack(fill="both", expand=True)
+
+        self._build_subs_view(self.view_subs)
+        self._build_collections_view(self.view_collections)
+
+        main = self.view_updates
 
         # ---- left column: mods the app can update ----
         left = ctk.CTkFrame(main, fg_color="transparent")
@@ -1804,7 +2041,9 @@ class PZUpdaterApp:
                                    wraplength=1040)
         self.status.pack(fill="x", padx=20, pady=(10, 14))
 
-        self.overlay = ctk.CTkFrame(main, fg_color=OVERLAY_BG, corner_radius=0)
+        # covers whichever view is open, so the collection and subscription
+        # views get the same progress curtain as the updater
+        self.overlay = ctk.CTkFrame(self.body, fg_color=OVERLAY_BG, corner_radius=0)
         inner = ctk.CTkFrame(self.overlay, fg_color="transparent")
         inner.place(relx=0.5, rely=0.5, anchor="center")
         self.overlay_bar = ctk.CTkProgressBar(inner, width=280, height=6, corner_radius=3,
@@ -2598,6 +2837,331 @@ class PZUpdaterApp:
         self._restack(self._manual_cards, sorted(order, key=ranks.get),
                       "_manual_order", 4)
         self._refresh_buttons()
+
+    # -- tabs: subscriptions and collections ----------------------------------
+    def _tab_values(self):
+        return [self.t(TAB_KEYS[v]) for v in VIEWS]
+
+    def _on_tab(self, value):
+        for key in VIEWS:
+            if self.t(TAB_KEYS[key]) == value:
+                self._show_view(key)
+                return
+
+    def _show_view(self, key, load=True):
+        """Switch the panel; `load=False` keeps a language change off the network."""
+        if key not in self._views:
+            key = "updates"
+        self._view = key
+        for name, frame in self._views.items():
+            if name == key:
+                frame.pack(fill="both", expand=True)
+            else:
+                frame.pack_forget()
+        try:
+            self.tab_bar.set(self.t(TAB_KEYS[key]))
+        except Exception:      # no tab bar yet while the window is being rebuilt
+            pass
+        if key == "subscribed":
+            self._render_subs()
+            if load:
+                self._ensure_subs()
+        elif key == "collections":
+            self._render_collection()
+
+    def _on_subs_filter(self, value):
+        self.subs_stale_only = (value == self.t("panel.subs.f_stale"))
+        self._render_subs()
+
+    def _build_subs_view(self, parent):
+        box = ctk.CTkFrame(parent, fg_color=CARD, corner_radius=14)
+        box.pack(fill="both", expand=True)
+
+        head = ctk.CTkFrame(box, fg_color="transparent")
+        head.pack(fill="x", padx=16, pady=(14, 2))
+        ctk.CTkLabel(head, text=self.t("panel.subs.title"), font=self.f_mod,
+                     text_color=TEXT).pack(anchor="w")
+        ctk.CTkLabel(head, text=self.t("panel.subs.subtitle"), font=self.f_muted,
+                     text_color=MUTED, anchor="w",
+                     justify="left").pack(anchor="w", pady=(1, 0))
+
+        bar = ctk.CTkFrame(box, fg_color="transparent")
+        bar.pack(fill="x", padx=16, pady=(8, 4))
+        self.subs_meta = ctk.CTkLabel(bar, text="", font=self.f_muted, text_color=MUTED,
+                                      anchor="w")
+        self.subs_meta.pack(side="left")
+        self.btn_subs_refresh = ctk.CTkButton(
+            bar, text=self.t("panel.subs.refresh"), width=104, height=28,
+            fg_color="transparent", hover_color=CARD_SEL, text_color=ACCENT,
+            border_width=1, border_color=ACCENT, corner_radius=8, font=self.f_muted,
+            command=lambda: self._ensure_subs(force=True))
+        self.btn_subs_refresh.pack(side="right")
+        self.subs_filter = ctk.CTkSegmentedButton(
+            bar, values=[self.t("panel.subs.f_all"), self.t("panel.subs.f_stale")],
+            font=self.f_muted, height=28, corner_radius=8, fg_color=CARD_SEL,
+            selected_color=ACCENT, selected_hover_color=ACCENT_HOVER,
+            unselected_color=CARD_SEL, unselected_hover_color=BORDER, text_color=TEXT,
+            command=self._on_subs_filter)
+        self.subs_filter.set(self.t("panel.subs.f_stale" if self.subs_stale_only
+                                    else "panel.subs.f_all"))
+        self.subs_filter.pack(side="right", padx=(0, 8))
+
+        ctk.CTkLabel(box, text=self.t("panel.subs.legend"), font=self.f_muted,
+                     text_color=MUTED, anchor="w", justify="left").pack(
+                         fill="x", padx=16, pady=(0, 4))
+
+        self.subs_scroll = ctk.CTkScrollableFrame(box, fg_color="transparent")
+        self.subs_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+    def _build_collections_view(self, parent):
+        box = ctk.CTkFrame(parent, fg_color=CARD, corner_radius=14)
+        box.pack(fill="both", expand=True)
+
+        head = ctk.CTkFrame(box, fg_color="transparent")
+        head.pack(fill="x", padx=16, pady=(14, 2))
+        ctk.CTkLabel(head, text=self.t("panel.coll.title"), font=self.f_mod,
+                     text_color=TEXT).pack(anchor="w")
+        ctk.CTkLabel(head, text=self.t("panel.coll.subtitle"), font=self.f_muted,
+                     text_color=MUTED, anchor="w",
+                     justify="left").pack(anchor="w", pady=(1, 0))
+
+        bar = ctk.CTkFrame(box, fg_color="transparent")
+        bar.pack(fill="x", padx=16, pady=(8, 6))
+        self.coll_entry = ctk.CTkEntry(bar, placeholder_text=self.t("panel.coll.placeholder"),
+                                       width=380, height=32, font=self.f_small)
+        self.coll_entry.pack(side="left")
+        last = self.state.get("collection_last") or ""
+        if last:
+            self.coll_entry.insert(0, last)
+        self.coll_entry.bind("<Return>", lambda e: self._show_collection())
+        ctk.CTkButton(bar, text=self.t("panel.coll.show"), width=90, height=32,
+                      fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=ON_ACCENT,
+                      corner_radius=8, font=self.f_muted,
+                      command=self._show_collection).pack(side="left", padx=(8, 0))
+        self.coll_meta = ctk.CTkLabel(bar, text="", font=self.f_muted, text_color=MUTED,
+                                      anchor="e", justify="right")
+        self.coll_meta.pack(side="right")
+
+        self.coll_scroll = ctk.CTkScrollableFrame(box, fg_color="transparent")
+        self.coll_scroll.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+
+    def _clear(self, frame):
+        for child in list(frame.winfo_children()):
+            child.destroy()
+
+    def _list_note(self, parent, text):
+        ctk.CTkLabel(parent, text=text, font=self.f_muted, text_color=MUTED,
+                     anchor="w", justify="left", wraplength=700).pack(
+                         fill="x", padx=12, pady=(6, 2))
+
+    def _mod_row(self, parent, row, note=None):
+        """One line of a list: title, how long since the last update, the date.
+
+        Yellow past half a year, red past a year - the whole point of the list is
+        spotting the mods that stopped being maintained at a glance.
+        """
+        colour = {"red": ALERT, "yellow": WARN}.get(stale_level(row["time_updated"]), TEXT)
+        frame = ctk.CTkFrame(parent, fg_color=CARD_SEL, corner_radius=10,
+                             border_width=1, border_color=BORDER)
+        frame.pack(fill="x", pady=3, padx=2)
+        frame.grid_columnconfigure(0, weight=1)
+
+        title = ctk.CTkLabel(frame, text=row["title"], font=self.f_small,
+                             text_color=colour, anchor="w", justify="left",
+                             wraplength=560, cursor="hand2")
+        title.grid(row=0, column=0, sticky="w", padx=(12, 8), pady=8)
+
+        age = ctk.CTkLabel(frame, text=age_text(age_days(row["time_updated"]), self.t),
+                           font=self.f_muted, text_color=colour, width=96, anchor="e")
+        age.grid(row=0, column=1, sticky="e", padx=(0, 10))
+
+        date = ctk.CTkLabel(frame, text=fmt_ts(row["time_updated"]), font=self.f_muted,
+                            text_color=MUTED, width=130, anchor="e")
+        date.grid(row=0, column=2, sticky="e", padx=(0, 10))
+
+        if note is not None:
+            note_text, note_colour = note
+            ctk.CTkLabel(frame, text=note_text, font=self.f_muted, text_color=note_colour,
+                         width=118, anchor="e").grid(row=0, column=3, sticky="e",
+                                                     padx=(0, 12))
+
+        for widget in (frame, title, age, date):
+            widget.bind("<Button-1>",
+                        lambda e, wid=row["id"]: self._open_url(WORKSHOP_URL.format(wid)))
+        return frame
+
+    def _ensure_subs_ids(self):
+        if not self._subs_ids:
+            self._subs_ids = set(subscribed_items(self.paths["libraries"]))
+        return self._subs_ids
+
+    def _ensure_subs(self, force=False):
+        """The local file gives the ids at once; Steam is asked for the rest."""
+        if self._subs_loading:
+            return
+        if force:
+            self._subs_ids = set()     # the file may have changed since it was read
+        self._ensure_subs_ids()
+        if not self._subs_ids:
+            self.set_status_key("msg.subs_none")
+            self._render_subs()
+            return
+
+        cached = self.state.get("subs_cache") or {}
+        known = {wid: d for wid, d in (cached.get("items") or {}).items()
+                 if wid in self._subs_ids}
+        missing = [wid for wid in self._subs_ids if wid not in known]
+        fresh = (time.time() - float(cached.get("fetched") or 0)) < SUBS_CACHE_SECONDS
+        if known:
+            self.subs_items = known
+            self._render_subs()
+        if not force and fresh and not missing:
+            return
+
+        ids = list(self._subs_ids) if force or not fresh else missing
+        self._subs_loading = True
+        self.set_status_key("msg.subs_reading")
+        self._show_overlay(self.t("msg.subs_reading"))
+
+        def work():
+            def progress(done, total):
+                # only the main thread touches widgets, progress goes through the queue
+                self._queue.put((self._overlay_progress, (done, total)))
+            return steam_batch_details(ids, on_progress=progress)
+
+        def on_done(result):
+            self._subs_loading = False
+            self._hide_overlay_after_min_time()
+            if isinstance(result, tuple) and result[0] == "error":
+                self.set_status_key("msg.check_failed", self._error_text(result[1]))
+                return
+            details, failed = result
+            merged = dict(self.subs_items)
+            merged.update(details)
+            # only what is still subscribed stays in the cache
+            merged = {wid: d for wid, d in merged.items() if wid in self._subs_ids}
+            self.subs_items = merged
+            self.state["subs_cache"] = {"fetched": int(time.time()), "items": merged}
+            save_state(self.state)
+            self._render_subs()
+            now = time.time()
+            red = sum(1 for wid, d in merged.items()
+                      if stale_level(d.get("time_updated"), now) == "red")
+            self.set_status_key("msg.subs_found", len(merged), red)
+            if failed:
+                self._log("ERROR", unreadable_text(len(failed), self.t))
+
+        self._run_async(work, on_done)
+
+    def _render_subs(self):
+        if not getattr(self, "subs_scroll", None):
+            return
+        self._clear(self.subs_scroll)
+        self._ensure_subs_ids()
+        now = time.time()
+        rows = []
+        for wid in self._subs_ids:
+            got = self.subs_items.get(wid) or {}
+            rows.append({"id": wid, "time_updated": int(got.get("time_updated") or 0),
+                         "title": got.get("title") or self.t("detail.workshop", wid)})
+        # oldest first; the ones Steam has not answered for yet go to the bottom
+        rows = oldest_first(rows)
+
+        red = stale_count(rows, now)
+        counts = self.t("panel.subs.count", len(rows))
+        if red:
+            counts += " · " + self.t("panel.subs.stale_count", red)
+        self.subs_meta.configure(text=counts, text_color=MUTED)
+
+        shown = [r for r in rows if stale_level(r["time_updated"], now)] \
+            if self.subs_stale_only else rows
+        if len(shown) > MOD_ROW_LIMIT:
+            self._list_note(self.subs_scroll,
+                            self.t("panel.subs.truncated", MOD_ROW_LIMIT, len(shown)))
+            shown = shown[:MOD_ROW_LIMIT]
+        for row in shown:
+            self._mod_row(self.subs_scroll, row)
+        if not rows:
+            self._list_note(self.subs_scroll, self.t("msg.subs_none"))
+        elif not shown:
+            self._list_note(self.subs_scroll, self.t("panel.subs.none_stale"))
+
+    def _show_collection(self):
+        if self._coll_loading:
+            return
+        cid = parse_collection_id(self.coll_entry.get())
+        if not cid:
+            self.set_status_key("msg.coll_bad_id")
+            return
+        self._coll_loading = True
+        self.set_status_key("msg.coll_reading")
+        self._show_overlay(self.t("msg.coll_reading"))
+        self._ensure_subs_ids()
+
+        def work():
+            collection = steam_collection(cid)
+
+            def progress(done, total):
+                self._queue.put((self._overlay_progress, (done, total)))
+
+            details, failed = steam_batch_details(collection["children"], on_progress=progress)
+            return collection, details, failed
+
+        def on_done(result):
+            self._coll_loading = False
+            self._hide_overlay_after_min_time()
+            if isinstance(result, tuple) and result[0] == "error":
+                message = self._error_text(result[1])
+                self.set_status_key("msg.check_failed", message)
+                self.coll_meta.configure(text=message, text_color=ALERT)
+                return
+            collection, details, failed = result
+            # only a collection that answered is worth prefilling the next time
+            self.state["collection_last"] = cid
+            save_state(self.state)
+            self.coll_result = {"id": cid, "title": collection["title"],
+                                "children": collection["children"],
+                                "details": details, "failed": set(failed)}
+            self._render_collection()
+            self.set_status_key("msg.coll_found", len(collection["children"]),
+                                collection["title"] or cid)
+
+        self._run_async(work, on_done)
+
+    def _render_collection(self):
+        if not getattr(self, "coll_scroll", None):
+            return
+        self._clear(self.coll_scroll)
+        result = self.coll_result
+        if not result:
+            self.coll_meta.configure(text="", text_color=MUTED)
+            return
+        now = time.time()
+        subscribed = self._ensure_subs_ids()
+        rows = []
+        for wid in result["children"]:
+            got = result["details"].get(wid) or {}
+            rows.append({"id": wid, "time_updated": int(got.get("time_updated") or 0),
+                         "title": got.get("title") or self.t("detail.workshop", wid),
+                         "mine": wid in subscribed})
+        rows = oldest_first(rows)
+
+        red = stale_count(rows, now)
+        counts = self.t("panel.subs.count", len(rows))
+        if red:
+            counts += " · " + self.t("panel.subs.stale_count", red)
+        if result["failed"]:
+            counts += " · " + unreadable_text(len(result["failed"]), self.t)
+        self.coll_meta.configure(text=counts, text_color=MUTED)
+
+        shown = rows[:MOD_ROW_LIMIT]
+        if len(rows) > len(shown):
+            self._list_note(self.coll_scroll,
+                            self.t("panel.subs.truncated", len(shown), len(rows)))
+        for row in shown:
+            note = (self.t("panel.coll.in_subs"), MUTED) if row["mine"] else \
+                (self.t("panel.coll.not_in_subs"), ACCENT)
+            self._mod_row(self.coll_scroll, row, note=note)
 
     # -- background work ------------------------------------------------------
     def _poll_queue(self):

@@ -22,6 +22,43 @@ STRINGS = {
         "panel.manual.subtitle": "Notifications only — you install these by hand",
         "panel.manual.add": "＋ Add",
 
+        # tabs
+        "tab.updates": "Mod updates",
+        "tab.subscribed": "Subscribed",
+        "tab.collections": "Collections",
+
+        # subscribed mods list
+        "panel.subs.title": "Your subscriptions",
+        "panel.subs.subtitle": "Everything you follow — the longest without an update on top",
+        "panel.subs.legend": "yellow — no update for over 6 months · red — over a year",
+        "panel.subs.refresh": "Refresh",
+        "panel.subs.f_all": "All",
+        "panel.subs.f_stale": "Stale only",
+        "panel.subs.count": "{0} mods",
+        "panel.subs.stale_count": "{0} without an update for over a year",
+        "panel.subs.truncated": "showing the {0} oldest of {1}",
+        "panel.subs.none_stale": "Nothing stale — every mod was updated within a year.",
+        "panel.coll.title": "Collections",
+        "panel.coll.subtitle": "Paste a public collection link or id to see its mods, "
+                               "the longest without an update first",
+        "panel.coll.placeholder": "collection link or id",
+        "panel.coll.show": "Show",
+        "panel.coll.in_subs": "subscribed",
+        "panel.coll.not_in_subs": "not subscribed",
+        "age.days": "{0} d ago",
+        "age.months": "{0} mo ago",
+        "msg.subs_reading": "Reading your workshop subscriptions…",
+        "msg.subs_none": "No subscribed mods found — is the Project Zomboid "
+                         "workshop used on this PC?",
+        "msg.subs_found": "{0} subscribed mods, {1} without an update for over a year.",
+        "msg.subs_failed": "{0} mods could not be read from Steam.",
+        "msg.subs_failed_one": "1 mod could not be read from Steam.",
+        "msg.coll_bad_id": "That is not a collection id or link.",
+        "msg.coll_reading": "Reading the collection…",
+        "msg.coll_found": "{0} mods in “{1}”.",
+        "error.collection_failed": "Steam did not answer: {0}",
+        "error.collection_missing": "No public collection with the id {0}.",
+
         # buttons
         "btn.check": "Check for updates",
         "btn.update": "Update",
@@ -211,6 +248,43 @@ STRINGS = {
         "panel.manual.title": "Obserwowane mody",
         "panel.manual.subtitle": "Tylko powiadomienia — instalujesz ręcznie",
         "panel.manual.add": "＋ Dodaj",
+
+        # zakładki
+        "tab.updates": "Aktualizacje modów",
+        "tab.subscribed": "Subskrybowane",
+        "tab.collections": "Kolekcje",
+
+        # lista subskrybowanych modów
+        "panel.subs.title": "Twoje subskrypcje",
+        "panel.subs.subtitle": "Wszystko, co obserwujesz — najdawniej aktualizowane na górze",
+        "panel.subs.legend": "żółty — brak aktualizacji ponad 6 mies. · czerwony — ponad rok",
+        "panel.subs.refresh": "Odśwież",
+        "panel.subs.f_all": "Wszystkie",
+        "panel.subs.f_stale": "Tylko przestarzałe",
+        "panel.subs.count": "{0} modów",
+        "panel.subs.stale_count": "{0} bez aktualizacji od ponad roku",
+        "panel.subs.truncated": "pokazano {0} najstarszych z {1}",
+        "panel.subs.none_stale": "Nic przestarzałego — każdy mod aktualizowany w ciągu roku.",
+        "panel.coll.title": "Kolekcje",
+        "panel.coll.subtitle": "Wklej link lub ID publicznej kolekcji, aby zobaczyć jej mody — "
+                               "najdawniej aktualizowane na górze",
+        "panel.coll.placeholder": "link lub ID kolekcji",
+        "panel.coll.show": "Pokaż",
+        "panel.coll.in_subs": "subskrybowany",
+        "panel.coll.not_in_subs": "nie subskrybujesz",
+        "age.days": "{0} dni temu",
+        "age.months": "{0} mies. temu",
+        "msg.subs_reading": "Czytam listę subskrypcji z workshopa…",
+        "msg.subs_none": "Nie znaleziono subskrybowanych modów — czy workshop "
+                         "Project Zomboid jest używany na tym PC?",
+        "msg.subs_found": "{0} subskrybowanych modów, {1} bez aktualizacji od ponad roku.",
+        "msg.subs_failed": "Nie udało się odczytać {0} modów ze Steama.",
+        "msg.subs_failed_one": "Nie udało się odczytać 1 moda ze Steama.",
+        "msg.coll_bad_id": "To nie jest ID ani link kolekcji.",
+        "msg.coll_reading": "Czytam kolekcję…",
+        "msg.coll_found": "{0} modów w „{1}”.",
+        "error.collection_failed": "Steam nie odpowiedział: {0}",
+        "error.collection_missing": "Nie ma publicznej kolekcji o ID {0}.",
 
         # buttons
         "btn.check": "Sprawdź aktualizacje",
