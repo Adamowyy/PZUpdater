@@ -16,7 +16,7 @@ import i18n
 import pzupdater as pz
 
 # [B42] ZombieBuddy Extensions wycięty z apki 2026-11-11 (Adam: mod jest useless).
-# Wpis zostaje tu, bo pokrywa podmianę jara, warstwę i wygaszanie po nowszym wydaniu.
+# Wpis zostaje tu, bo pokrywa podmianę jara i wygaszanie po nowszym wydaniu.
 EXTS = {
     "key": "zombiebuddy_fix",
     "name": "[B42] ZombieBuddy Extensions",
@@ -26,16 +26,32 @@ EXTS = {
     "search_under": "mods",
     "target_rel": "ZombieBuddy.jar",
     "obsolete_if_newer_than": "3619862853",
-    "obsolete_if_installed": ["3812624292"],
+    "obsolete_if_installed": ["3619862853"],
     "layer": True,
-    "alternative_to": "3619862853",
+}
+
+# Better Car Physics wycięty z apki 2026-11-20. Wpis zostaje jako fixture, bo
+# pokrywa typ folder_copy (kopiowanie całego folderu do gry).
+BCP = {
+    "key": "better_car_physics",
+    "name": "Better Car Physics",
+    "workshop_id": "2909035179",
+    "type": "folder_copy",
+    "manual_dir": os.path.join("mods", "BetterCarPhysics", "manual_installation"),
+    "copy_name": "zombie",
+    "target_rel": "zombie",
 }
 
 def with_extensions():
-    """Rejestr z wpisem Extensions na jego dawnym miejscu: wydanie, fix, beta."""
+    """Rejestr z wpisem Extensions na jego dawnym miejscu: wydanie, fix."""
     mods = list(pz.UPDATABLE_MODS)
     at = next(i for i, m in enumerate(mods) if m["key"] == "zombiebuddy") + 1
     return mods[:at] + [EXTS] + mods[at:]
+
+
+def with_bcp():
+    """Rejestr z wpisem Better Car Physics, żeby typ folder_copy był pokryty."""
+    return with_extensions() + [BCP]
 
 
 
@@ -93,10 +109,12 @@ class TestFilesIdentical(TempCase):
 
 
 class TestFolderCopyInstallState(TempCase):
-    """Better Car Physics: folder_copy — kopiuje folder 'zombie' do gry."""
+    """Better Car Physics (fixture): folder_copy — kopiuje folder 'zombie' do gry."""
 
     def setUp(self):
         super().setUp()
+        self._registry = pz.UPDATABLE_MODS
+        pz.UPDATABLE_MODS = with_bcp()
         self.ws = self.p("ws")
         self.src = self.p("ws", "mods", "BetterCarPhysics", "manual_installation",
                           "42.21.0", "zombie")
@@ -106,8 +124,12 @@ class TestFolderCopyInstallState(TempCase):
               b"base-vehicle", mtime=1700000000)
         write(os.path.join(self.src, "core", "physics", "CarController$ClientControls.class"),
               b"client-controls", mtime=1700000000)
-        self.mod = next(m for m in pz.UPDATABLE_MODS if m["key"] == "better_car_physics")
+        self.mod = BCP
         self.ws_map = {"better_car_physics": self.ws}
+
+    def tearDown(self):
+        pz.UPDATABLE_MODS = self._registry
+        super().tearDown()
 
     def state(self):
         return pz.mod_install_state(self.mod, self.game, self.ws_map,
@@ -226,7 +248,7 @@ class TestRealRegistry(TempCase):
     def setUp(self):
         super().setUp()
         self._registry = pz.UPDATABLE_MODS
-        pz.UPDATABLE_MODS = with_extensions()
+        pz.UPDATABLE_MODS = with_bcp()
         self.ws_map = {}
         for mod in pz.UPDATABLE_MODS:
             ws = self.p("content", mod["workshop_id"])
@@ -249,11 +271,6 @@ class TestRealRegistry(TempCase):
         write(os.path.join(self.ws_map["zombiebuddy_fix"], "mods",
                            "ZombieBuddy_Extensions", "42.21", "ZombieBuddy.jar"),
               b"FIX")
-        # zombiebuddy_beta (workshop 3812624292) — ten sam układ plików co wydanie
-        beta = self.ws_map["zombiebuddy_beta"]
-        for fn in ("ZombieBuddy.jar", "zbNative.dll"):
-            write(os.path.join(beta, "mods", "ZombieBuddy", "libs", fn),
-                  b"BETA-" + fn.encode())
         # tempo_patches — paczka klas dla builda 42.21.0
         tempo = os.path.join(self.ws_map["tempo_patches"], "mods", "Tempo_PerfKit",
                              "manual_installation", "42.21.0", "zombie")
@@ -365,9 +382,9 @@ class TestOneTimeNotices(unittest.TestCase):
         self.assertEqual(names, [])
 
     def test_a_mod_without_a_notice_raises_nothing(self):
-        mod = {"key": "better_car_physics"}
-        names = pz.notices_to_show([mod], [("Better Car Physics", True, "copied")],
-                                   {"better_car_physics": "install"}, {})
+        mod = {"key": "tempo_patches"}
+        names = pz.notices_to_show([mod], [("Tempo", True, "copied")],
+                                   {"tempo_patches": "install"}, {})
         self.assertEqual(names, [])
 
     def test_zombiebuddy_carries_the_launch_option_notice(self):
@@ -378,198 +395,6 @@ class TestOneTimeNotices(unittest.TestCase):
         used = {m["notice"] for m in pz.UPDATABLE_MODS if m.get("notice")}
         self.assertTrue(used)
         self.assertEqual(used - set(pz.NOTICE_KEYS), set())
-
-
-class TestBetaVisibility(unittest.TestCase):
-    """Wiersz BETA pokazuje się tylko wtedy, gdy beta jest nowsza od wydania."""
-
-    BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
-    RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
-    FIX = EXTS
-
-    def hidden(self, beta_version, release_version):
-        versions = {"zombiebuddy_beta": beta_version, "zombiebuddy": release_version}
-        return pz.preview_hidden(self.BETA, lambda m: versions.get(m["key"]))
-
-    def test_a_newer_beta_is_shown(self):
-        self.assertFalse(self.hidden("3.0.0-beta1", "2.3.4"))
-
-    def test_the_release_passing_the_beta_hides_it(self):
-        self.assertTrue(self.hidden("3.0.0-beta1", "3.0.0"))
-
-    def test_a_beta_of_a_higher_release_is_shown(self):
-        self.assertFalse(self.hidden("3.1.0-beta1", "3.0.0"))
-
-    def test_an_older_beta_is_hidden(self):
-        self.assertTrue(self.hidden("2.3.4", "2.4.0"))
-
-    def test_jars_that_cannot_be_read_keep_the_row(self):
-        self.assertFalse(self.hidden(None, None))
-        self.assertFalse(self.hidden("3.0.0-beta1", None))
-
-    def test_a_mod_without_the_field_is_never_hidden(self):
-        self.assertFalse(pz.preview_hidden(self.RELEASE, lambda m: "1.0"))
-
-    def test_the_beta_installs_the_same_files_as_the_release(self):
-        self.assertEqual(self.BETA["type"], self.RELEASE["type"])
-        self.assertEqual(self.BETA["src_dir"], self.RELEASE["src_dir"])
-        self.assertEqual(self.BETA["files"], self.RELEASE["files"])
-
-    def test_the_beta_sits_below_the_release_in_the_registry(self):
-        keys = [m["key"] for m in pz.UPDATABLE_MODS]
-        self.assertLess(keys.index("zombiebuddy"), keys.index("zombiebuddy_beta"))
-
-    def test_the_extensions_fix_gives_way_to_the_beta_when_the_beta_is_in_the_game(self):
-        """Fix nie wgrywa swojego starszego jara na betę, ale tylko gdy beta leży w grze."""
-        self.assertEqual(self.FIX["obsolete_if_newer_than"], "3619862853")
-        self.assertIn("3812624292", self.FIX["obsolete_if_installed"])
-
-    def test_the_beta_carries_the_launch_option_notice(self):
-        self.assertEqual(self.BETA["notice"], "zombiebuddy_launch_options")
-
-    def test_the_beta_declares_the_release_as_its_alternative(self):
-        self.assertEqual(self.BETA["alternative_to"], "3619862853")
-
-    def test_the_beta_carries_no_remark_next_to_its_name(self):
-        self.assertNotIn("name_note", self.BETA)
-        self.assertNotIn("name_note_when_old", self.BETA)
-
-
-class TestAlternativeBuilds(TempCase):
-    """Wydanie, beta i fix wgrywają ten sam jar, więc w grze może być tylko jeden."""
-
-    def setUp(self):
-        super().setUp()
-        self._registry = pz.UPDATABLE_MODS
-        pz.UPDATABLE_MODS = with_extensions()
-        self.ws_rel = self.p("ws_rel")
-        self.ws_fix = self.p("ws_fix")
-        self.ws_beta = self.p("ws_beta")
-        for ws, jar in ((self.ws_rel, b"RELEASE-JAR"), (self.ws_beta, b"BETA-JAR")):
-            write(os.path.join(ws, "mods", "ZombieBuddy", "libs", "ZombieBuddy.jar"), jar)
-            write(os.path.join(ws, "mods", "ZombieBuddy", "libs", "zbNative.dll"), b"DLL")
-        write(os.path.join(self.ws_fix, "mods", "ZombieBuddy_Extensions", "42.21",
-                           "ZombieBuddy.jar"), b"FIX-JAR")
-        self.RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
-        self.FIX = EXTS
-        self.BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
-        self.ws_map = {"zombiebuddy": self.ws_rel, "zombiebuddy_fix": self.ws_fix,
-                       "zombiebuddy_beta": self.ws_beta}
-
-    def tearDown(self):
-        pz.UPDATABLE_MODS = self._registry
-        super().tearDown()
-
-    def game_with_jar(self, content):
-        write(os.path.join(self.game, "ZombieBuddy.jar"), content)
-        write(os.path.join(self.game, "zbNative.dll"), b"DLL")
-
-    def test_the_whole_family_is_found_from_any_member(self):
-        expected = ["zombiebuddy", "zombiebuddy_fix", "zombiebuddy_beta"]
-        for mod in (self.RELEASE, self.FIX, self.BETA):
-            self.assertEqual([m["key"] for m in pz.build_family(mod)], expected,
-                             msg=mod["key"])
-
-    def test_a_mod_without_an_alternative_is_its_own_family(self):
-        mod = next(m for m in pz.UPDATABLE_MODS if m["key"] == "better_car_physics")
-        self.assertEqual(pz.build_family(mod), [mod])
-
-    def test_each_jar_in_the_game_names_its_own_entry(self):
-        for content, expected in ((b"RELEASE-JAR", self.RELEASE),
-                                  (b"FIX-JAR", self.FIX),
-                                  (b"BETA-JAR", self.BETA)):
-            self.game_with_jar(content)
-            for mod in (self.RELEASE, self.FIX, self.BETA):
-                self.assertIs(pz.installed_build(mod, self.game, self.ws_map), expected)
-
-    def test_an_unknown_jar_belongs_to_nobody(self):
-        self.game_with_jar(b"SOME-OLDER-BUILD")
-        self.assertIsNone(pz.installed_build(self.RELEASE, self.game, self.ws_map))
-
-    def test_nothing_in_the_game_folder_is_nobody(self):
-        self.assertIsNone(pz.installed_build(self.RELEASE, self.game, self.ws_map))
-
-    def test_no_game_folder_means_no_answer(self):
-        self.assertIsNone(pz.installed_build(self.RELEASE, None, self.ws_map))
-
-    def test_a_hidden_beta_leaves_the_release_to_install_normally(self):
-        """Beta ukryta = nie ma z czym porównywać, wydanie pokazuje Zainstaluj."""
-        self.game_with_jar(b"BETA-JAR")
-        self.assertIsNone(pz.installed_build(self.RELEASE, self.game, self.ws_map,
-                                            [self.RELEASE]))
-
-
-class TestOffersSwitch(unittest.TestCase):
-    """Kto dostaje przycisk „Zmień na…", a kto zwykłe Zainstaluj."""
-
-    RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
-    FIX = EXTS
-    BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
-
-    def test_a_build_that_is_not_in_the_game_offers_the_switch(self):
-        self.assertTrue(pz.offers_switch(self.RELEASE, self.BETA))
-        self.assertTrue(pz.offers_switch(self.BETA, self.RELEASE))
-
-    def test_the_build_that_is_in_the_game_offers_nothing(self):
-        self.assertFalse(pz.offers_switch(self.RELEASE, self.RELEASE))
-        self.assertFalse(pz.offers_switch(self.BETA, self.BETA))
-
-    def test_the_extensions_fix_is_installed_not_switched_to(self):
-        """Fix dokłada się do loadera, więc ma zwykłe Zainstaluj, nie „Zmień na…"."""
-        self.assertTrue(self.FIX.get("layer"))
-        self.assertFalse(pz.offers_switch(self.FIX, self.RELEASE))
-        self.assertFalse(pz.offers_switch(self.FIX, self.BETA))
-
-    def test_the_fix_counts_as_the_loader_it_patches(self):
-        """Wgrany fix to ten sam loader z łatką — wydanie nie ma przy nim krzyczeć."""
-        self.assertFalse(pz.offers_switch(self.RELEASE, self.FIX))
-
-    def test_the_beta_is_still_offered_next_to_the_fix(self):
-        """Beta to osobna wersja, więc obok fixa nadal proponuje się sama."""
-        self.assertTrue(pz.offers_switch(self.BETA, self.FIX))
-
-    def test_nothing_installed_offers_no_switch(self):
-        self.assertFalse(pz.offers_switch(self.RELEASE, None))
-        self.assertFalse(pz.offers_switch(self.BETA, None))
-
-
-class TestClashingBuild(unittest.TestCase):
-    """Dwa wpisy z tym samym mod id obok siebie psują multiplayera."""
-
-    RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
-    FIX = EXTS
-    BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
-
-    ALL = {"zombiebuddy": "content", "zombiebuddy_beta": "content",
-           "zombiebuddy_fix": "content"}
-
-    def test_the_other_half_of_the_pair_is_reported(self):
-        self.assertIs(pz.clashing_build(self.RELEASE, pz.UPDATABLE_MODS, self.ALL),
-                      self.BETA)
-        self.assertIs(pz.clashing_build(self.BETA, pz.UPDATABLE_MODS, self.ALL),
-                      self.RELEASE)
-
-    def test_nothing_is_reported_when_the_other_one_is_not_subscribed(self):
-        ws = {"zombiebuddy": "content", "zombiebuddy_beta": None,
-              "zombiebuddy_fix": None}
-        self.assertIsNone(pz.clashing_build(self.RELEASE, pz.UPDATABLE_MODS, ws))
-
-    def test_the_extensions_fix_is_never_switched_instead(self):
-        """Fix ma inne id moda, więc nie jest tym, co trzeba odsubskrybować."""
-        ws = {"zombiebuddy": "content", "zombiebuddy_beta": "content",
-              "zombiebuddy_fix": "content"}
-        self.assertIs(pz.clashing_build(self.RELEASE, pz.UPDATABLE_MODS, ws),
-                      self.BETA)
-        self.assertIsNone(pz.clashing_build(self.FIX, pz.UPDATABLE_MODS, ws))
-
-    def test_a_layer_next_to_a_build_is_not_a_clash(self):
-        ws = {"zombiebuddy": "content", "zombiebuddy_beta": None,
-              "zombiebuddy_fix": "content"}
-        self.assertIsNone(pz.clashing_build(self.RELEASE, pz.UPDATABLE_MODS, ws))
-
-    def test_a_mod_without_a_pair_reports_nothing(self):
-        mod = next(m for m in pz.UPDATABLE_MODS if m["key"] == "better_car_physics")
-        self.assertIsNone(pz.clashing_build(mod, pz.UPDATABLE_MODS, self.ALL))
 
 
 class TestDeprecatedRow(unittest.TestCase):
@@ -604,9 +429,6 @@ class TestDeprecatedRow(unittest.TestCase):
         def _install_state(self, mod):
             return (pz.INSTALL_OK, True, 1)
 
-        def _installed_build(self, mod, mods=None):
-            return None
-
         def _saved_ts(self, workshop_id):
             return 0
 
@@ -628,26 +450,14 @@ class TestDeprecatedRow(unittest.TestCase):
         self.assertFalse(info["muted"])
 
 
-def make_jar(path, version):
-    """Minimalny jar z manifestem takim, jak w prawdziwym ZombieBuddy."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with zipfile.ZipFile(path, "w") as z:
-        z.writestr("me/zed_0xff/zombie_buddy/Main.class", b"\xca\xfe\xba\xbe")
-        z.writestr("META-INF/MANIFEST.MF",
-                   "Manifest-Version: 1.0\r\nImplementation-Version: %s\r\n\r\n" % version)
-    return path
-
-
 def headless_app(game, ws_map, state=None):
     """Aplikacja bez okna: prawdziwe metody liczenia stanu, atrapa tylko reszty."""
     class App:
         _install_state = pz.PZUpdaterApp._install_state
-        _installed_build = pz.PZUpdaterApp._installed_build
         _installed_files = pz.PZUpdaterApp._installed_files
         _jar_version_of = pz.PZUpdaterApp._jar_version_of
         _mod_by_workshop_id = pz.PZUpdaterApp._mod_by_workshop_id
         _is_obsolete = pz.PZUpdaterApp._is_obsolete
-        _is_hidden = pz.PZUpdaterApp._is_hidden
         _is_collapsed = pz.PZUpdaterApp._is_collapsed
         _visible_mods = pz.PZUpdaterApp._visible_mods
         _status_info = pz.PZUpdaterApp._status_info
@@ -678,75 +488,33 @@ def headless_app(game, ws_map, state=None):
     return App()
 
 
-class TestOutdatedBuildInGame(TempCase):
-    """Zgłoszony przypadek: mod, którego build jest w grze, dostał aktualizację.
-
-    Jar w grze przestaje być identyczny ze swoją kopią w warsztacie, więc rodzina
-    nie może zgubić tego, co jest zainstalowane (przycisk Aktualizuj i „Przestarzały"
-    przy fixie zależą od tego, który build leży w folderze gry).
-    """
+class TestObsoleteIfInstalled(TempCase):
+    """Wpis gaśnie, gdy mod, który go zastępuje, leży już w folderze gry."""
 
     def setUp(self):
         super().setUp()
-        pz.JAR_VERSION_CACHE.clear()
         self._registry = pz.UPDATABLE_MODS
         pz.UPDATABLE_MODS = with_extensions()
-        self.ws_rel = self.p("ws_rel")
-        self.ws_fix = self.p("ws_fix")
-        self.ws_beta = self.p("ws_beta")
-        for ws, version in ((self.ws_rel, "2.2.0"), (self.ws_beta, "3.0.0-beta2")):
-            make_jar(os.path.join(ws, "mods", "ZombieBuddy", "libs", "ZombieBuddy.jar"),
-                     version)
-            write(os.path.join(ws, "mods", "ZombieBuddy", "libs", "zbNative.dll"), b"DLL")
-        make_jar(os.path.join(self.ws_fix, "mods", "ZombieBuddy_Extensions", "42",
-                              "ZombieBuddy.jar"), "2.3.4")
-        # Gra ma build o jedną wersję starszy niż jego kopia w warsztacie
-        self.game_with_jar("3.0.0-beta1")
-        self.RELEASE = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
-        self.FIX = EXTS
-        self.BETA = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy_beta")
-        # Jak na maszynie, na której to wyszło: wydanie bez subskrypcji, beta w grze
-        self.ws_map = {"zombiebuddy": None, "zombiebuddy_fix": self.ws_fix,
-                       "zombiebuddy_beta": self.ws_beta}
-
-    def game_with_jar(self, version):
-        pz.JAR_VERSION_CACHE.clear()
-        make_jar(os.path.join(self.game, "ZombieBuddy.jar"), version)
-        write(os.path.join(self.game, "zbNative.dll"), b"DLL")
+        self.base = next(m for m in pz.UPDATABLE_MODS if m["key"] == "zombiebuddy")
+        self.ws = self.p("ws")
+        for fn in ("ZombieBuddy.jar", "zbNative.dll"):
+            write(os.path.join(self.ws, "mods", "ZombieBuddy", "libs", fn),
+                  b"zb-" + fn.encode())
 
     def tearDown(self):
         pz.UPDATABLE_MODS = self._registry
         super().tearDown()
-        pz.JAR_VERSION_CACHE.clear()
 
-    def test_the_updated_beta_still_names_itself_as_the_build_in_the_game(self):
-        self.assertIs(pz.installed_build(self.BETA, self.game, self.ws_map), self.BETA)
-        self.assertIs(pz.installed_build(self.RELEASE, self.game, self.ws_map), self.BETA)
+    def test_the_fix_steps_aside_once_the_release_is_in_the_game(self):
+        for fn in ("ZombieBuddy.jar", "zbNative.dll"):
+            write(os.path.join(self.game, fn),
+                  b"zb-" + fn.encode())
+        app = headless_app(self.game, {"zombiebuddy": self.ws})
+        self.assertTrue(app._is_obsolete(EXTS))
 
-    def test_the_release_keeps_its_name_when_the_release_itself_got_updated(self):
-        self.game_with_jar("2.1.0")
-        ws_map = dict(self.ws_map, zombiebuddy=self.ws_rel)
-        self.assertIs(pz.installed_build(self.RELEASE, self.game, ws_map), self.RELEASE)
-
-    def test_an_unreadable_jar_still_belongs_to_nobody(self):
-        write(os.path.join(self.game, "ZombieBuddy.jar"), b"OLD-BUILD-WITHOUT-MANIFEST")
-        pz.JAR_VERSION_CACHE.clear()
-        self.assertIsNone(pz.installed_build(self.BETA, self.game, self.ws_map))
-
-    def test_the_extensions_stay_out_of_the_way_of_the_installed_beta(self):
-        app = headless_app(self.game, self.ws_map)
-        self.assertTrue(app._is_obsolete(self.FIX))
-
-    def test_the_extensions_are_offered_normally_when_no_beta_is_in_the_game(self):
-        self.game_with_jar("2.1.0")
-        app = headless_app(self.game, dict(self.ws_map, zombiebuddy=self.ws_rel))
-        self.assertFalse(app._is_obsolete(self.FIX))
-
-    def test_the_main_button_updates_the_build_that_is_in_the_game(self):
-        app = headless_app(self.game, self.ws_map)
-        self.assertEqual([m["key"] for m in app._installed_for_update()],
-                         ["zombiebuddy_beta"])
-        self.assertEqual(app._pending_actions(), {"zombiebuddy_beta": "install"})
+    def test_an_empty_game_folder_leaves_the_fix_alone(self):
+        app = headless_app(self.game, {"zombiebuddy": self.ws})
+        self.assertFalse(app._is_obsolete(EXTS))
 
 
 class TestRegistryRelations(unittest.TestCase):
@@ -761,17 +529,9 @@ class TestRegistryRelations(unittest.TestCase):
 
     def test_every_relation_points_at_a_registered_entry(self):
         for mod in pz.UPDATABLE_MODS:
-            for field in ("visible_if_newer_than", "alternative_to",
-                          "obsolete_if_newer_than", "obsolete_if_installed"):
+            for field in ("obsolete_if_newer_than", "obsolete_if_installed"):
                 for target in self.targets(mod, field):
                     self.assertIn(target, self.ids(), msg=f"{mod['key']}.{field}")
-
-    def test_relations_never_point_at_their_own_entry(self):
-        for mod in pz.UPDATABLE_MODS:
-            for field in ("visible_if_newer_than", "alternative_to"):
-                target = mod.get(field)
-                if target:
-                    self.assertNotEqual(target, mod["workshop_id"], msg=mod["key"])
 
 
 class TestReleaseKey(unittest.TestCase):

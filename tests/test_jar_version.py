@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pzupdater as pz
 
 # [B42] ZombieBuddy Extensions wycięty z apki 2026-11-11 (Adam: mod jest useless).
-# Wpis zostaje tu, bo pokrywa podmianę jara, warstwę i wygaszanie po nowszym wydaniu.
+# Wpis zostaje tu, bo pokrywa podmianę jara i wygaszanie po nowszym wydaniu.
 EXTS = {
     "key": "zombiebuddy_fix",
     "name": "[B42] ZombieBuddy Extensions",
@@ -24,13 +24,12 @@ EXTS = {
     "search_under": "mods",
     "target_rel": "ZombieBuddy.jar",
     "obsolete_if_newer_than": "3619862853",
-    "obsolete_if_installed": ["3812624292"],
+    "obsolete_if_installed": ["3619862853"],
     "layer": True,
-    "alternative_to": "3619862853",
 }
 
 def with_extensions():
-    """Rejestr z wpisem Extensions na jego dawnym miejscu: wydanie, fix, beta."""
+    """Rejestr z wpisem Extensions na jego dawnym miejscu: wydanie, fix."""
     mods = list(pz.UPDATABLE_MODS)
     at = next(i for i, m in enumerate(mods) if m["key"] == "zombiebuddy") + 1
     return mods[:at] + [EXTS] + mods[at:]

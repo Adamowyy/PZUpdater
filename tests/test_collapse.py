@@ -39,8 +39,7 @@ class StateCase(unittest.TestCase):
         def __init__(self, state=None, info=None):
             self.state = state if state is not None else {"mods": {}, "collapsed": []}
             self.info = info or {"pending": None, "status": "status.up_to_date",
-                                 "tag": "ok", "install": pz.INSTALL_OK,
-                                 "switch": False}
+                                 "tag": "ok", "install": pz.INSTALL_OK}
             self.log = []
             self.refreshed = 0
 
@@ -55,9 +54,6 @@ class StateCase(unittest.TestCase):
 
         def _status_info(self, mod):
             return dict(self.info)
-
-        def _installed_build(self, mod):
-            return mod
 
 
 class TestFold(StateCase):
@@ -115,14 +111,14 @@ class TestFoldedCardsAreNotOffered(StateCase):
 
     def test_a_folded_mod_is_not_pending(self):
         info = {"pending": "install", "status": "status.new_version", "tag": "new",
-                "install": pz.INSTALL_OK, "switch": False}
+                "install": pz.INSTALL_OK}
         app = self.pending_app([TEMPO], info)
         self.assertEqual(app._pending_actions(), {})
         self.assertEqual(app._installed_for_update(), [])
 
     def test_an_unfolded_mod_stays_pending(self):
         info = {"pending": "install", "status": "status.new_version", "tag": "new",
-                "install": pz.INSTALL_OK, "switch": False}
+                "install": pz.INSTALL_OK}
         app = self.pending_app([], info)
         self.assertEqual(app._pending_actions(), {TEMPO: "install"})
         self.assertEqual([m["key"] for m in app._installed_for_update()], [TEMPO])

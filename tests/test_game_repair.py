@@ -33,6 +33,25 @@ STRAYS = (
     "zombie/core/physics/CarController.class",
 )
 
+# Better Car Physics wycięty z apki 2026-11-20. Wpis zostaje jako fixture, bo
+# pokrywa typ folder_copy i podział plików między dwa mody w tym samym folderze.
+BCP = {
+    "key": "better_car_physics",
+    "name": "Better Car Physics",
+    "workshop_id": "2909035179",
+    "type": "folder_copy",
+    "manual_dir": os.path.join("mods", "BetterCarPhysics", "manual_installation"),
+    "copy_name": "zombie",
+    "target_rel": "zombie",
+}
+
+
+def with_bcp():
+    """Rejestr z Better Car Physics na jego dawnym miejscu (przed Tempo)."""
+    mods = list(pz.UPDATABLE_MODS)
+    at = next(i for i, m in enumerate(mods) if m["key"] == "tempo_patches")
+    return mods[:at] + [BCP] + mods[at:]
+
 
 def write(path, content=b"x"):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -67,8 +86,11 @@ class RepairCase(unittest.TestCase):
         pz.JAR_INFO_CACHE.clear()
         pz.GAME_BUILD_CACHE.clear()
         self.t = i18n.Translator("pl")
+        self._registry = pz.UPDATABLE_MODS
+        pz.UPDATABLE_MODS = with_bcp()
 
     def tearDown(self):
+        pz.UPDATABLE_MODS = self._registry
         for name, value in (("APPDATA", self._appdata), ("USERPROFILE", self._userprofile)):
             if value is None:
                 os.environ.pop(name, None)
@@ -265,7 +287,6 @@ class TestRowStatus(RepairCase):
         _status_info = pz.PZUpdaterApp._status_info
         _mod_name = pz.PZUpdaterApp._mod_name
         _install_state = pz.PZUpdaterApp._install_state
-        _installed_build = pz.PZUpdaterApp._installed_build
         _installed_files = pz.PZUpdaterApp._installed_files
         _prune_dead_records = pz.PZUpdaterApp._prune_dead_records
         _is_obsolete = lambda self, mod: False

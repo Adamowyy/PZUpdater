@@ -36,7 +36,6 @@ STRINGS = {
         "btn.clear": "Clear",
         "btn.close": "Close",
         "btn.copy": "Copy",
-        "btn.switch_to": "Switch to {}",
         "btn.repair": "Repair the game",
         "btn.remove_files": "Take files out",
         "btn.app_update": "↑ Update to {}",
@@ -52,7 +51,6 @@ STRINGS = {
         "status.new_update": "New update",
         "status.new_version": "New mod version",
         "status.up_to_date": "Up to date",
-        "status.other_build": "In game: {}",
         "status.pending": "…",
         "status.subscribed": "✓ subscribed",
         "status.no_subscription": "not subscribed",
@@ -70,8 +68,6 @@ STRINGS = {
         "detail.steam": "Steam: {}",
         "detail.version": "version {}",
         "detail.fix_obsolete": "not needed, ZombieBuddy does the same",
-        "detail.beta_offered": "the BETA is newer",
-        "detail.newer_than_beta": "newer than the BETA",
         "detail.files_ok": "✓ in game ({})",
         "detail.files_missing": "✗ mod files not in the game folder",
         "detail.files_partial": "⚠ {} of {} files match",
@@ -202,10 +198,6 @@ STRINGS = {
             "Options, and paste the line below. The two dashes at the end belong to "
             "it, keep them.",
         "notice.zombiebuddy_launch_options.value": "-agentlib:zbNative --",
-
-        # unsubscribe the other half of the pair
-        "notice.unsub.text":
-            "Two ZombieBuddy detected - unsubscribe from \"{}\" to avoid errors!",
     },
     "pl": {
         # header
@@ -234,7 +226,6 @@ STRINGS = {
         "btn.clear": "Wyczyść",
         "btn.close": "Zamknij",
         "btn.copy": "Kopiuj",
-        "btn.switch_to": "Zmień na {}",
         "btn.repair": "Napraw grę",
         "btn.remove_files": "Wycofaj pliki",
         "btn.app_update": "↑ Aktualizuj do {}",
@@ -250,7 +241,6 @@ STRINGS = {
         "status.new_update": "Nowa aktualizacja",
         "status.new_version": "Nowa wersja moda",
         "status.up_to_date": "Aktualny",
-        "status.other_build": "W grze: {}",
         "status.pending": "…",
         "status.subscribed": "✓ subskrybowany",
         "status.no_subscription": "brak subskrypcji",
@@ -268,8 +258,6 @@ STRINGS = {
         "detail.steam": "Steam: {}",
         "detail.version": "wersja {}",
         "detail.fix_obsolete": "niepotrzebny, ZombieBuddy robi to samo",
-        "detail.beta_offered": "BETA jest nowsza",
-        "detail.newer_than_beta": "nowsza niż BETA",
         "detail.files_ok": "✓ w grze ({})",
         "detail.files_missing": "✗ brak plików moda w grze",
         "detail.files_partial": "⚠ w grze {} z {} plików zgodnych",
@@ -401,10 +389,6 @@ STRINGS = {
             "Właściwości, potem Opcje uruchamiania i wklej poniższą linię. Dwie "
             "kreski na końcu są jej częścią, nie usuwaj ich.",
         "notice.zombiebuddy_launch_options.value": "-agentlib:zbNative --",
-
-        # unsubscribe the other half of the pair
-        "notice.unsub.text":
-            "Wykryto dwa ZombieBuddy — odsubskrybuj „{}”, żeby uniknąć błędów!",
     },
 }
 

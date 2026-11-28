@@ -42,7 +42,7 @@ PROFILE_URL = "https://steamcommunity.com/id/AdamowY/"
 
 # Bumped by hand with every release. The running exe compares itself against the
 # newest GitHub release, so the number here has to match the tag of the build.
-APP_VERSION = "1.1.4"
+APP_VERSION = "1.1.5"
 RELEASES_API = "https://api.github.com/repos/Adamowyy/PZUpdater/releases/latest"
 APP_EXE_NAME = "PZUpdater.exe"
 USER_AGENT = f"{APP_NAME}/{APP_VERSION}"
@@ -51,7 +51,7 @@ USER_AGENT = f"{APP_NAME}/{APP_VERSION}"
 # Only mods that need a manual install belong here, not a plain subscription.
 # "type" says how the files land in the game folder, "help" needs a text per
 # language, "notice" a one-time message, and "obsolete_if_newer_than" /
-# "visible_if_newer_than" let a row switch itself off by version.
+# "obsolete_if_installed" let a row switch itself off by version.
 UPDATABLE_MODS = [
     {
         "key": "zombiebuddy",
@@ -67,44 +67,6 @@ UPDATABLE_MODS = [
                   "(the Java mod loader).",
             "pl": "Kopiuje ZombieBuddy.jar i zbNative.dll do folderu gry "
                   "(ładowarka modów Java).",
-        },
-    },
-    {
-        "key": "zombiebuddy_beta",
-        "name": "ZombieBuddy BETA",
-        "workshop_id": "3812624292",
-        "type": "files_copy",
-        "src_dir": os.path.join("mods", "ZombieBuddy", "libs"),
-        "files": ["ZombieBuddy.jar", "zbNative.dll"],
-        "notice": "zombiebuddy_launch_options",
-        "visible_if_newer_than": "3619862853",
-        "alternative_to": "3619862853",
-        "help": {
-            "en": "Beta of the next ZombieBuddy release. It installs the same two "
-                  "files and replaces the release build, so the two can never be "
-                  "active at the same time.",
-            "pl": "Beta następnego wydania ZombieBuddy. Wgrywa te same dwa pliki i "
-                  "zastępuje wersję z wydania, więc obie nigdy nie działają "
-                  "jednocześnie.",
-        },
-    },
-    {
-        "key": "better_car_physics",
-        "name": "Better Car Physics",
-        "workshop_id": "2909035179",
-        "type": "folder_copy",
-        "manual_dir": os.path.join("mods", "BetterCarPhysics", "manual_installation"),
-        "copy_name": "zombie",
-        "target_rel": "zombie",
-        "help": {
-            "en": "Copies the 'zombie' folder from the newest version "
-                  "(for example 42.21.0) into the game folder. Builds of the game "
-                  "with a signed jar do not accept copied classes: the app says so "
-                  "and offers to take the old ones out again.",
-            "pl": "Kopiuje folder 'zombie' z najnowszej wersji (np. 42.21.0) do "
-                  "folderu gry. Buildy gry z podpisanym jarem nie przyjmują "
-                  "kopiowanych klas: aplikacja to zgłasza i proponuje usunięcie "
-                  "starych plików.",
         },
     },
     {
@@ -549,17 +511,6 @@ ACTION_HANDLERS = {
 # One-time notices
 
 NOTICE_KEYS = ("zombiebuddy_launch_options",)
-
-
-def preview_hidden(mod, version_of):
-    """True when a preview entry has nothing left to show."""
-    ref_id = mod.get("visible_if_newer_than")
-    if not ref_id:
-        return False
-    ref = next((m for m in UPDATABLE_MODS if m["workshop_id"] == ref_id), None)
-    if ref is None:
-        return False
-    return newer_version(version_of(mod), version_of(ref)) is False
 
 
 def notices_to_show(mods, results, actions, shown):
@@ -1054,10 +1005,10 @@ def patch_conflicts(game_dir, mod):
 def mod_owned_paths(mod, ws):
     """Lower-case paths this mod would write below its target folder.
 
-    Tempo and Better Car Physics both copy into the same "zombie" folder, so the
-    folder alone cannot say whose file a stray class is. The classes each mod
-    ships can: they are read from every version folder the mod carries, because
-    the one for the current build may be missing exactly when the game updated.
+    Tempo copies classes into the game's own "zombie" folder, so the folder alone
+    cannot say whose file a stray class is. The classes the mod ships can: they
+    are read from every version folder the mod carries, because the one for the
+    current build may be missing exactly when the game updated.
     """
     out = set()
     if not ws or not os.path.isdir(ws):
@@ -1177,80 +1128,6 @@ def mod_targets(mod, ws, game=None):
         return [("/".join((prefix, rel.replace("\\", "/"))), "file", full)
                 for rel, full in dir_files(src).items()]
     return []
-
-
-def build_family(mod, mods=None):
-    """Every entry that installs the same files as this one, itself included."""
-    mods = list(mods) if mods is not None else list(UPDATABLE_MODS)
-    root_id = mod.get("alternative_to") or mod["workshop_id"]
-    return [m for m in mods
-            if m["workshop_id"] == root_id or m.get("alternative_to") == root_id]
-
-
-def build_lane(name):
-    """The marker an author put in front of a release number (beta, rc...)."""
-    found = PRERELEASE.search(name or "")
-    return found.group(1).lower() if found else ""
-
-
-def installed_build(mod, game, workshop_map, mods=None):
-    """The entry of this mod's family whose jar is in the game folder.
-
-    Byte identity is the exact answer, but it disappears the moment the build in
-    the game gets an update: the jar in the game is then one step behind its own
-    source in the workshop. The version still says where it came from - it is
-    the closest source that supersedes it, staying on the same lane so a beta is
-    never taken for a release.
-    """
-    if not game:
-        return None
-    sources = []
-    for candidate in build_family(mod, mods):
-        for rel, kind, src in mod_targets(candidate, workshop_map.get(candidate["key"]), game):
-            if kind == "file" and src and rel.lower().endswith(".jar"):
-                sources.append((candidate, src, os.path.join(game, rel)))
-                break       # one jar per entry names the whole entry
-    for candidate, src, dst in sources:
-        if files_identical(src, dst):
-            return candidate
-    version = next((jar_version(dst) for _c, _s, dst in sources
-                    if os.path.isfile(dst)), None)
-    if not version:
-        return None
-    lane, key = build_lane(version), release_key(version)
-    same_lane = []
-    for candidate, src, _dst in sources:
-        source = jar_version(src)
-        if source and build_lane(source) == lane:
-            same_lane.append((candidate, release_key(source)))
-    if not same_lane:
-        return None
-    newer = [(c, k) for c, k in same_lane if k >= key]
-    # The build in the game sits one step below the source it came from, so the
-    # first source that follows that version is the one that put it there.
-    return (min(newer, key=lambda ck: ck[1]) if newer
-            else max(same_lane, key=lambda ck: ck[1]))[0]
-
-
-def offers_switch(mod, installed):
-    """True when this row should offer to swap the game onto its own build."""
-    if installed is None or installed is mod or mod.get("layer"):
-        return False
-    if installed.get("layer"):
-        return mod["workshop_id"] != installed.get("alternative_to")
-    return True
-
-
-def clashing_build(mod, mods, workshop_map):
-    """The other build of this pair that sits in the workshop next to this one."""
-    if mod.get("layer"):
-        return None
-    for other in build_family(mod, mods):
-        if other is mod or other.get("layer"):
-            continue
-        if workshop_map.get(other["key"]):
-            return other
-    return None
 
 
 def accepted_sources(mods, workshop_map):
@@ -1452,7 +1329,7 @@ def update_failed_file():
 # running fine. Naming the previous release here lets their swap script see its
 # own version and finish, which is the only way this fix can reach people
 # automatically. Harmless afterwards: nothing else reads this file.
-MARKER_ALSO_NAMES = ("1.1.2", "1.1.1", "1.1.0")
+MARKER_ALSO_NAMES = ("1.1.4", "1.1.3", "1.1.2", "1.1.1", "1.1.0")
 
 
 def write_start_marker():
@@ -2165,11 +2042,6 @@ class PZUpdaterApp:
         return mod_install_state(mod, self.paths["game_dir"], self.paths["workshop"],
                                  self._visible_mods(), self._sources)
 
-    def _installed_build(self, mod):
-        """The half of an either/or pair whose jar is in the game folder."""
-        return installed_build(mod, self.paths.get("game_dir"),
-                               self.paths.get("workshop") or {}, self._visible_mods())
-
     def _files_note(self, info):
         state, ok, total = info["install"], info["ok"], info["total"]
         if state == INSTALL_OK:
@@ -2226,8 +2098,7 @@ class PZUpdaterApp:
         install, ok, total = self._install_state(mod)
         info = {"install": install, "ok": ok, "total": total, "pending": None,
                 "muted": False, "status": "", "tag": "", "files_note": None,
-                "switch": False, "switch_name": "", "repair": 0,
-                "signed_warning": False, "name": self._mod_name(mod),
+                "repair": 0, "signed_warning": False, "name": self._mod_name(mod),
                 "requires": self._requirements(mod, self._files_present(mod))}
         # Files of this mod that are in the game folder and which the JVM refuses:
         # the game does not start at all, so nothing else about this row matters.
@@ -2282,13 +2153,6 @@ class PZUpdaterApp:
                             files_note=self.t("detail.patch_wait"))
                 return info
 
-        # One loader per game folder: the other entries offer the switch instead.
-        installed = self._installed_build(mod)
-        if offers_switch(mod, installed):
-            info.update(status=self.t("status.other_build", installed["name"]), tag="info",
-                        pending="install", switch=True, switch_name=mod["name"])
-            return info
-
         details = self.steam_info.get(mod["workshop_id"])
         saved = self._saved_ts(mod["workshop_id"])
         cur = details["time_updated"] if details else 0
@@ -2330,24 +2194,20 @@ class PZUpdaterApp:
             if self._is_collapsed(m["key"]):
                 continue
             info = self._status_info(m)
-            # A switch has its own button: the main one must never turn the user
-            # over to the other build on its own. A repair is not an install.
-            if info["pending"] in ("install", "update") and not info["switch"]:
+            # A repair is not an install: only the two real actions count.
+            if info["pending"] in ("install", "update"):
                 pending[m["key"]] = info["pending"]
         return pending
 
     def _installed_for_update(self):
         """Mods the main Update button may touch."""
         out = []
-        visible = self._visible_mods()
-        for m in visible:
+        for m in self._visible_mods():
             if self._is_collapsed(m["key"]):
                 continue
             info = self._status_info(m)
-            if not (info["pending"] in ("install", "update") and not info["switch"]
+            if not (info["pending"] in ("install", "update")
                     and info["install"] in (INSTALL_OK, INSTALL_PARTIAL)):
-                continue
-            if len(build_family(m, visible)) > 1 and self._installed_build(m) is not m:
                 continue
             out.append(m)
         return out
@@ -2501,9 +2361,13 @@ class PZUpdaterApp:
         """True when another mod makes this one pointless."""
         # A mod can also be pointless because the build it replaces is the one in
         # the game folder, whatever the versions say.
+        game = self.paths.get("game_dir")
         for other_id in mod.get("obsolete_if_installed") or []:
             other = self._mod_by_workshop_id(other_id)
-            if other is not None and self._installed_build(other) is other:
+            if other is None or not game:
+                continue
+            if mod_install_state(other, game,
+                                 self.paths.get("workshop") or {})[0] == INSTALL_OK:
                 return True
         refs = mod.get("obsolete_if_newer_than")
         if not refs:
@@ -2528,17 +2392,9 @@ class PZUpdaterApp:
     def _mod_by_workshop_id(self, workshop_id):
         return next((m for m in UPDATABLE_MODS if m["workshop_id"] == workshop_id), None)
 
-    def _preview_of(self, mod):
-        """The entry that previews the next version of this mod, if one is registered."""
-        return next((m for m in UPDATABLE_MODS
-                     if m.get("visible_if_newer_than") == mod["workshop_id"]), None)
-
-    def _is_hidden(self, mod):
-        """True when a preview entry (the BETA) should be off the list."""
-        return preview_hidden(mod, self._jar_version_of)
-
     def _visible_mods(self):
-        return [m for m in UPDATABLE_MODS if not self._is_hidden(m)]
+        """Every registered mod - none of them hides itself any more."""
+        return list(UPDATABLE_MODS)
 
     def _names_for(self, workshop_ids):
         """Human names for workshop ids, for the status line."""
@@ -2579,7 +2435,7 @@ class PZUpdaterApp:
         setattr(self, attr, keys)
 
     def refresh_statuses(self):
-        # The beta row can come and go, so the column is rebuilt when the list changes
+        # A card column that no longer matches the registry is rebuilt from scratch
         if set(self._cards) != {m["key"] for m in self._visible_mods()}:
             self._rebuild_ui()
             return
@@ -2616,20 +2472,13 @@ class PZUpdaterApp:
             for need in info["requires"]:
                 bits.append((self.t("detail.required_by", need["name"]),
                              MUTED if need["ok"] else ALERT))
-            # Which build is ahead, so a BETA row appearing is never a guess
-            preview = self._preview_of(m)
-            if preview is not None and not info["switch"]:
-                bits.append((self.t("detail.newer_than_beta") if self._is_hidden(preview)
-                             else self.t("detail.beta_offered"), ALERT))
             # The warning owns the note line below, so the fact that the files are
             # not in the game folder would otherwise vanish from the card.
             if info["files_note"] and info["install"] == INSTALL_MISSING:
                 bits.append((self.t("detail.files_missing"), MUTED))
             # The file hint is long, so it goes on its own line and wraps
             note = None
-            if info["switch"]:
-                pass      # the badge already names the build that is in the game
-            elif info["files_note"]:
+            if info["files_note"]:
                 note = (info["files_note"], ALERT if info["signed_warning"] else MUTED)
             elif ws:
                 note = (self._files_note(info), MUTED)
@@ -2683,15 +2532,13 @@ class PZUpdaterApp:
                                              text_color=TEXT,
                                              command=lambda k=key: self.do_remove(k))
                 else:
-                    if info["switch"]:
-                        label = self.t("btn.switch_to", info["switch_name"])
-                    elif info["install"] == INSTALL_MISSING:
+                    if info["install"] == INSTALL_MISSING:
                         label = self.t("btn.install")
                     else:
                         label = self.t("btn.update")
                     # Amber, not blue, when the row warns that copying may stop the
                     # game from starting: the click still works, but has to look risky.
-                    warn = info["signed_warning"] and not info["switch"]
+                    warn = info["signed_warning"]
                     card["action"].configure(text=label,
                                              fg_color=WARN if warn else ACCENT,
                                              hover_color=WARN_HOVER if warn else ACCENT_HOVER,
@@ -3187,17 +3034,12 @@ class PZUpdaterApp:
                 self._show_toast(self.t("msg.some_failed", len(failed)))
             self.set_status("   |   ".join(lines))
             notices = notices_to_show(mods, result, actions, self.state["notices"])
-            clashing = self._clashing_builds(mods, result)
             for notice in notices:
                 self.state["notices"][notice] = True
-            for notice, _other in clashing:
-                self.state["notices"][notice] = True
-            if notices or clashing:
+            if notices:
                 save_state(self.state)   # never raise the same notice twice
                 for notice in notices:
                     self._show_notice(notice)
-                for _notice, other in clashing:
-                    self._show_unsubscribe_notice(other)
             if fresh["files"]:
                 # The row itself turns into "blocks the game from starting" with the
                 # repair button, and the status line says what happened. A dialog on
@@ -3375,21 +3217,6 @@ class PZUpdaterApp:
             self._toast = None
 
     # -- one-time notices -----------------------------------------------------
-    def _clashing_builds(self, mods, results):
-        """[(notice name, the build to unsubscribe from)] - once per build."""
-        visible = self._visible_mods()
-        out = []
-        for mod, (_name, ok, _msg) in zip(mods, results):
-            other = clashing_build(mod, visible, self.paths["workshop"]) if ok else None
-            if other is None:
-                continue
-            notice = f"unsub_{other['key']}"
-            if self.state["notices"].get(notice):
-                continue
-            if not any(name == notice for name, _ in out):
-                out.append((notice, other))
-        return out
-
     def _notice_shell(self, title, body=None, window_title=None, width=580, height=340):
         """Window and heading shared by the notices; returns (dialog, button row)."""
         dlg = ctk.CTkToplevel(self.root)
@@ -3442,17 +3269,6 @@ class PZUpdaterApp:
         copy_btn.configure(command=copy_value)
         entry.focus_set()
         entry.select_range(0, "end")      # so Ctrl+C works without dragging
-
-    def _show_unsubscribe_notice(self, other):
-        """One line telling the user to drop the other build, with its workshop page."""
-        dlg, btns = self._notice_shell(self.t("notice.unsub.text", self._mod_name(other)),
-                                      window_title="ZombieBuddy", width=470, height=200)
-        ctk.CTkButton(btns, text=self.t("btn.open_steam"), width=150, height=34,
-                      fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color=ON_ACCENT,
-                      corner_radius=8, font=self.f_small,
-                      command=lambda w=other["workshop_id"]:
-                          self._open_url(WORKSHOP_URL.format(w))).pack(side="left")
-        return dlg
 
     def _refresh_jvm_button(self):
         """Green while the launcher carries the flags, red once a game update took them."""

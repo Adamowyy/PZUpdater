@@ -24,6 +24,7 @@ class Headless(pz.PZUpdaterApp):
         self.paths = paths
         self.state = state
         self.steam_info = {}
+        self.steam_failed = set()
         self.manual_mods = state["manual_mods"]
         self.t = i18n.Translator(state["language"])
         self._selected = None
@@ -31,29 +32,13 @@ class Headless(pz.PZUpdaterApp):
         self._sources = pz.accepted_sources(self._visible_mods(), paths["workshop"])
 
 
-def old_installed_build(mod, game, workshop_map, mods=None):
-    """The rule as it was before the fix: byte identity only."""
-    if not game:
-        return None
-    for candidate in pz.build_family(mod, mods):
-        for rel, kind, src in pz.mod_targets(candidate, workshop_map.get(candidate["key"]), game):
-            if (kind == "file" and src and rel.lower().endswith(".jar")
-                    and pz.files_identical(src, os.path.join(game, rel))):
-                return candidate
-    return None
-
-
 def report(app, title):
     print(f"\n== {title} ==")
     for m in app._visible_mods():
         info = app._status_info(m)
-        note = ""
-        if info["switch"]:
-            note = f"  switch to {info['switch_name']}"
-        elif info["files_note"]:
-            note = f"  {info['files_note']}"
+        note = f"  {info['files_note']}" if info["files_note"] else ""
         print(f"  {m['key']:20s} {info['status']:32s} pending={str(info['pending']):8s}"
-              f" muted={str(info['muted']):5s} switch={info['switch']}"
+              f" muted={str(info['muted']):5s}"
               f" remove={bool(app._installed_files(m))}{note}")
     pending = app._pending_actions()
     print("  status bar, to install/update:", pending or "—")
@@ -88,11 +73,7 @@ def main():
                 if src and rel.lower().endswith(".jar"):
                     print(f"  {key}: {pz.jar_version(src)}  ({rel})")
 
-    report(app, "Version as identity (new rule)")
-    real = pz.installed_build
-    pz.installed_build = old_installed_build
-    report(app, "Jar bytes as identity (old rule)")
-    pz.installed_build = real
+    report(app, "Row state on this machine")
 
 
 if __name__ == "__main__":

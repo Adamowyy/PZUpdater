@@ -18,7 +18,7 @@ import i18n
 import pzupdater as pz
 
 BETTER_FPS = "3622986450"
-ZB_KEYS = ("zombiebuddy", "zombiebuddy_beta")
+ZB_KEYS = ("zombiebuddy",)
 
 
 class Requirements(unittest.TestCase):

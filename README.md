@@ -6,7 +6,7 @@ game folder by hand.
 
 ![PZ Updater](docs/screenshot.jpg)
 
-<sub>Better Car Physics is subscribed but its files are not in the game folder yet — that card stays greyed out until you install it, and the main **Update** button stays off the table.</sub>
+<sub>Tempo is subscribed but its files are not in the game folder yet — that card stays greyed out until you install it, and the main **Update** button stays off the table.</sub>
 
 ## Install
 
@@ -92,8 +92,6 @@ classpath ahead of the jar and the JVM throws the exception above straight away.
 | Mod | Workshop ID | What it installs |
 | --- | --- | --- |
 | ZombieBuddy | 3619862853 | `ZombieBuddy.jar` and `zbNative.dll` into the game folder (the Java mod loader) |
-| ZombieBuddy BETA | 3812624292 | the same two files from the beta build. The row appears only while the beta is newer than ZombieBuddy and hides itself once ZombieBuddy passes it |
-| Better Car Physics | 2909035179 | the `zombie` folder from the newest version in `manual_installation` |
 | Tempo - A Performance & FPS Optimizer | 3736629791 | the three compiled `.class` patches, from the `manual_installation` folder named after the game build |
 
 Mods in the right-hand column of the window are **watched**: notifications only.

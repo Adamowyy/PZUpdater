@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """Jeden martwy workshop id nie może wywrócić sprawdzania wszystkich wierszy.
 
-Zgłoszenie Adama: wiersz ZombieBuddy BETA nie pokazywał daty ani stanu, bo
+Zgłoszenie Adama: wiersz ZombieBuddy nie pokazywał daty ani stanu, bo
 sprawdzanie kończyło się błędem na jednej pozycji z prawej kolumny („Immersive
 Moodles", 3830422267 — Steam nie zna tego id) i `steam_info` zostawało puste.
 """
@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pzupdater as pz
 
-GOOD_ID = "3812624292"
+GOOD_ID = "3619862853"
 
 
 def headless_app(failed=(), steam_info=None, install=pz.INSTALL_OK, saved=100):
@@ -33,7 +33,6 @@ def headless_app(failed=(), steam_info=None, install=pz.INSTALL_OK, saved=100):
         _manifests = pz.PZUpdaterApp._manifests
         _installed_files = pz.PZUpdaterApp._installed_files
         _visible_mods = pz.PZUpdaterApp._visible_mods
-        _is_hidden = pz.PZUpdaterApp._is_hidden
         _jar_version_of = pz.PZUpdaterApp._jar_version_of
         _mod_by_workshop_id = pz.PZUpdaterApp._mod_by_workshop_id
 
@@ -54,9 +53,6 @@ def headless_app(failed=(), steam_info=None, install=pz.INSTALL_OK, saved=100):
 
         def _install_state(self, mod):
             return (install, install == pz.INSTALL_OK, 1)
-
-        def _installed_build(self, mod, mods=None):
-            return None
 
         def _saved_ts(self, workshop_id):
             return saved
@@ -127,7 +123,7 @@ class TheRowSaysWhy(unittest.TestCase):
 
     def test_a_tracked_row_without_steam_data_says_so(self):
         app = headless_app(failed=[GOOD_ID])
-        info = app._status_info(self.mod("zombiebuddy_beta"))
+        info = app._status_info(self.mod("zombiebuddy"))
         self.assertEqual(info["status"], "status.no_steam_data")
         self.assertEqual(info["tag"], "err")
         self.assertFalse(info["muted"])
@@ -141,13 +137,13 @@ class TheRowSaysWhy(unittest.TestCase):
 
     def test_a_row_still_waiting_keeps_the_dots(self):
         app = headless_app()
-        info = app._status_info(self.mod("zombiebuddy_beta"))
+        info = app._status_info(self.mod("zombiebuddy"))
         self.assertEqual(info["status"], "status.pending")
         self.assertEqual(app._manual_status(app.manual_mods[0])[0], "status.pending")
 
     def test_steam_data_makes_the_row_current_again(self):
-        app = headless_app(steam_info={GOOD_ID: {"title": "B", "time_updated": 100}})
-        info = app._status_info(self.mod("zombiebuddy_beta"))
+        app = headless_app(steam_info={GOOD_ID: {"title": "ZombieBuddy", "time_updated": 100}})
+        info = app._status_info(self.mod("zombiebuddy"))
         self.assertEqual(info["status"], "status.up_to_date")
         self.assertEqual(info["tag"], "ok")
 

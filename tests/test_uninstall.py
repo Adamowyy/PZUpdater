@@ -14,7 +14,7 @@ import i18n
 import pzupdater as pz
 
 # [B42] ZombieBuddy Extensions wycięty z apki 2026-11-11 (Adam: mod jest useless).
-# Wpis zostaje tu, bo pokrywa podmianę jara, warstwę i wygaszanie po nowszym wydaniu.
+# Wpis zostaje tu, bo pokrywa podmianę jara i wygaszanie po nowszym wydaniu.
 EXTS = {
     "key": "zombiebuddy_fix",
     "name": "[B42] ZombieBuddy Extensions",
@@ -24,9 +24,20 @@ EXTS = {
     "search_under": "mods",
     "target_rel": "ZombieBuddy.jar",
     "obsolete_if_newer_than": "3619862853",
-    "obsolete_if_installed": ["3812624292"],
+    "obsolete_if_installed": ["3619862853"],
     "layer": True,
-    "alternative_to": "3619862853",
+}
+
+# Better Car Physics wycięty z apki 2026-11-20. Wpis zostaje jako fixture, bo
+# pokrywa typ folder_copy (kopiowanie całego folderu do gry i jego wycofanie).
+BCP = {
+    "key": "better_car_physics",
+    "name": "Better Car Physics",
+    "workshop_id": "2909035179",
+    "type": "folder_copy",
+    "manual_dir": os.path.join("mods", "BetterCarPhysics", "manual_installation"),
+    "copy_name": "zombie",
+    "target_rel": "zombie",
 }
 
 
@@ -62,6 +73,8 @@ class TempCase(unittest.TestCase):
     def mod(self, key):
         if key == EXTS["key"]:      # wpis wycięty z rejestru, ale typ dalej działa
             return EXTS
+        if key == BCP["key"]:       # wpis wycięty z rejestru, ale typ dalej działa
+            return BCP
         return next(m for m in pz.UPDATABLE_MODS if m["key"] == key)
 
     def game_path(self, rel):
